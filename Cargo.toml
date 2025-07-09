@@ -1,0 +1,59 @@
+# Copyright (c) 2025 Joshua Seaton
+#
+# Use of this source code is governed by a MIT-style
+# license that can be found in the LICENSE file or at
+# https://opensource.org/licenses/MIT
+
+[package]
+name = "wafer"
+version.workspace = true
+edition.workspace = true
+
+description = "A WebAssembly parsing, validation, and runtime library focused on correctness, flexibility, and performance"
+
+license.workspace = true
+readme.workspace = true
+repository.workspace = true
+
+[features]
+default = ["allocator-api2/alloc"]
+std = ["allocator-api2/std"]
+
+[build-dependencies]
+rustc_version = "0.4"
+
+[dependencies]
+allocator-api2 = "0.3"
+num_enum = "0.7"
+
+[lints]
+workspace = true
+
+[workspace]
+members = ["spec-tests"]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/joshuaseaton/wafer"
+
+[workspace.lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(nightly)'] }
+unreachable_pub = "deny"
+unused_lifetimes = "deny"
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+undocumented_unsafe_blocks = "deny"
+
+# More noise than signal, more heat than light.
+cast_possible_truncation = "allow"
+enum_glob_use = "allow"
+missing_errors_doc = "allow"
+must_use_candidate = "allow"
+single_component_path_imports = "allow"
+wildcard_imports = "allow"

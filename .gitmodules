@@ -1,0 +1,3 @@
+[submodule "third-party/github.com/WebAssembly/spec"]
+	path = third-party/github.com/WebAssembly/spec
+	url = https://github.com/WebAssembly/spec

@@ -1,0 +1,22 @@
+# Copyright (c) 2025 Joshua Seaton
+#
+# Use of this source code is governed by a MIT-style
+# license that can be found in the LICENSE file or at
+# https://opensource.org/licenses/MIT
+
+[package]
+name = "wast2json"
+version.workspace = true
+edition.workspace = true
+
+description = "Common types for WebAssembly specification test format"
+
+license.workspace = true
+readme.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }

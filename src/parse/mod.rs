@@ -1,0 +1,677 @@
+// Copyright (c) 2025 Joshua Seaton
+//
+// Use of this source code is governed by a MIT-style
+// license that can be found in the LICENSE file or at
+// https://opensource.org/licenses/MIT
+
+//! WebAssembly binary format parsing.
+
+mod expr;
+mod leb128;
+mod parsable_impls;
+
+use expr::transcode_expression;
+
+use core::fmt;
+
+use num_enum::TryFromPrimitive;
+
+use leb128::Leb128;
+
+use crate::core_compat::alloc::{Allocator, collections::TryReserveError};
+use crate::core_compat::boxed::Box;
+use crate::core_compat::vec::Vec;
+use crate::storage::Stream;
+use crate::types::{CustomSection, Module, Name, SectionId, Version};
+
+// The maximum parsing depth of this implementation (which is also pretty much
+// the lower bound implicitly suggested by the spec).
+const MAX_DEPTH: usize = 6;
+
+// We represent this as an enum with one value to leverage existing "parse this
+// u32 enum" machinery to check for a valid magic value.
+#[derive(Clone, Copy, Debug, TryFromPrimitive)]
+#[repr(u32)]
+enum Magic {
+    Value = 0x6d_73_61_00, // '\0asm'
+}
+
+// Represents parsing context.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[repr(u8)]
+enum ContextId {
+    #[default]
+    Invalid,
+    BlockType,
+    BrTableOperands,
+    BulkOpcode,
+    Byte,
+    CodeSec,
+    CustomSec,
+    Data,
+    DataIdx,
+    DataSec,
+    DataToken,
+    Elem,
+    ElemIdx,
+    ElemKind,
+    ElemSec,
+    ElemToken,
+    Export,
+    ExportDesc,
+    ExportDescToken,
+    ExportSec,
+    Expr,
+    F32,
+    F64,
+    Func,
+    FuncIdx,
+    FuncType,
+    FuncTypeToken,
+    FuncSec,
+    Global,
+    GlobalIdx,
+    GlobalSec,
+    GlobalType,
+    I32,
+    I64,
+    Import,
+    ImportDesc,
+    ImportDescToken,
+    ImportSec,
+    LabelIdx,
+    Limits,
+    LimitsMaxToken,
+    LocalIdx,
+    Locals,
+    Magic,
+    MemArg,
+    MemIdx,
+    MemType,
+    MemorySec,
+    Mut,
+    Name,
+    Opcode,
+    ReadingBytes,
+    RefType,
+    ResultType,
+    SectionId,
+    SelectTOperands,
+    SkippingBytes,
+    TableIdx,
+    TableSec,
+    TableType,
+    TypeIdx,
+    TypeSec,
+    U32,
+    ValType,
+    VecByte,
+    VecCode,
+    VecExpr,
+    VecFuncIdx,
+    VecLabelIdx,
+    VecValType,
+    Version,
+}
+
+impl From<ContextId> for &'static str {
+    fn from(id: ContextId) -> Self {
+        match id {
+            ContextId::Invalid => unreachable!("invalid context somehow reached!?"),
+            ContextId::BrTableOperands => "br_table operands",
+            ContextId::BulkOpcode => "bulk opcode",
+            ContextId::Byte => "byte",
+            ContextId::CodeSec => "codesec",
+            ContextId::CustomSec => "customsec",
+            ContextId::Data => "data",
+            ContextId::DataIdx => "dataidx",
+            ContextId::DataSec => "datasec",
+            ContextId::DataToken => "data token",
+            ContextId::Elem => "elem",
+            ContextId::ElemIdx => "elemidx",
+            ContextId::ElemKind => "elemkind",
+            ContextId::ElemSec => "elemsec",
+            ContextId::ElemToken => "elem token",
+            ContextId::Func => "func",
+            ContextId::Export => "export",
+            ContextId::ExportDesc => "exportdesc",
+            ContextId::ExportDescToken => "exportdesc token",
+            ContextId::ExportSec => "exportsec",
+            ContextId::Expr => "expr",
+            ContextId::F32 => "f32",
+            ContextId::F64 => "f64",
+            ContextId::FuncIdx => "funcidx",
+            ContextId::FuncType => "functype",
+            ContextId::FuncTypeToken => "functype token",
+            ContextId::FuncSec => "funcsec",
+            ContextId::Global => "global",
+            ContextId::GlobalIdx => "globalidx",
+            ContextId::GlobalSec => "globalsec",
+            ContextId::GlobalType => "globaltype",
+            ContextId::I32 => "i32",
+            ContextId::I64 => "i64",
+            ContextId::Import => "import",
+            ContextId::ImportDesc => "importdesc",
+            ContextId::ImportDescToken => "importdesc token",
+            ContextId::ImportSec => "importsec",
+            ContextId::LabelIdx => "labelidx",
+            ContextId::Limits => "limits",
+            ContextId::LimitsMaxToken => "limits max token",
+            ContextId::LocalIdx => "localidx",
+            ContextId::Locals => "locals",
+            ContextId::Magic => "magic",
+            ContextId::MemArg => "memarg",
+            ContextId::MemIdx => "memidx",
+            ContextId::MemType => "memtype",
+            ContextId::MemorySec => "memsec",
+            ContextId::Mut => "mut",
+            ContextId::Name => "name",
+            ContextId::Opcode => "opcode",
+            ContextId::ReadingBytes => "reading bytes",
+            ContextId::RefType => "reftype",
+            ContextId::ResultType => "resulttype",
+            ContextId::SectionId => "section ID",
+            ContextId::SelectTOperands => "select_t operands",
+            ContextId::SkippingBytes => "skipping bytes",
+            ContextId::TableIdx => "tableidx",
+            ContextId::TableSec => "tablesec",
+            ContextId::TableType => "tabletype",
+            ContextId::TypeIdx => "typeidx",
+            ContextId::TypeSec => "typesec",
+            ContextId::U32 => "u32",
+            ContextId::ValType => "valtype",
+            ContextId::VecByte => "vec(byte)",
+            ContextId::BlockType => "blocktype",
+            ContextId::VecCode => "vec(code)",
+            ContextId::VecExpr => "vec(expr)",
+            ContextId::VecFuncIdx => "vec(funcidx)",
+            ContextId::VecLabelIdx => "vec(labelidx)",
+            ContextId::VecValType => "vec(valtype)",
+            ContextId::Version => "version",
+        }
+    }
+}
+
+trait Contextual {
+    const ID: ContextId;
+}
+
+/// A single frame in the parsing context stack.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ContextFrame {
+    /// The type of context.
+    pub context: &'static str,
+
+    /// Byte offset in the stream where this context was entered.
+    pub offset: usize,
+}
+
+/// Stack for tracking parsing context during error reporting.
+#[derive(Clone, Debug, Default)]
+pub struct ContextStack {
+    offsets: [usize; MAX_DEPTH],
+    ids: [ContextId; MAX_DEPTH],
+    depth: u8,
+}
+
+impl ContextStack {
+    // Pushes a new context frame, returning true if successful.
+    fn push(&mut self, id: ContextId, offset: usize) -> bool {
+        let depth = self.depth as usize;
+        if depth >= MAX_DEPTH {
+            return false;
+        }
+        self.offsets[depth] = offset;
+        self.ids[depth] = id;
+        self.depth += 1;
+        true
+    }
+
+    // Pop the top context frame.
+    fn pop(&mut self) {
+        debug_assert!(self.depth > 0, "{self:#?}");
+        self.depth -= 1;
+    }
+
+    /// Returns an iterator over frames in "pushed" order (outermost to
+    /// innermost).
+    pub fn iter(&self) -> impl Iterator<Item = ContextFrame> + '_ {
+        self.offsets
+            .iter()
+            .zip(&self.ids)
+            .take(self.depth as usize)
+            .map(|(&offset, &id)| ContextFrame {
+                context: id.into(),
+                offset,
+            })
+    }
+}
+
+/// A parsing error with additional context around what hierarchy of things were
+/// being parsed at the time.
+pub struct ContextualError<'a, Storage: Stream> {
+    /// The underlying parsing error.
+    pub error: Error<Storage>,
+    context: &'a ContextStack,
+}
+
+impl<Storage: Stream> fmt::Debug for ContextualError<'_, Storage> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self.error)?;
+        for (i, frame) in self.context.iter().enumerate() {
+            write!(f, "\n{:#x}: ", frame.offset)?;
+            for _ in 0..i {
+                write!(f, "  ")?;
+            }
+            write!(f, "{}", frame.context)?;
+        }
+        Ok(())
+    }
+}
+
+/// Extension trait for adding context to parsing results. This is implemented
+/// by `Result<T, Error<Storage>` and the intent is that this is chained from a
+/// call to `parse_module()`:
+/// ```rust,ignore
+/// let context = ContextStack::default();
+/// parse_module(&mut context, storage, visitor, alloc).with_context(&context).unwrap();
+/// ```
+pub trait ContextualResult<'a, T, Storage: Stream> {
+    /// Attach context information to this result for improved error reporting.
+    fn with_context(self, context: &'a ContextStack) -> Result<T, ContextualError<'a, Storage>>;
+}
+
+impl<'a, T, Storage: Stream> ContextualResult<'a, T, Storage> for Result<T, Error<Storage>> {
+    fn with_context(self, context: &'a ContextStack) -> Result<T, ContextualError<'a, Storage>> {
+        self.map_err(|error| ContextualError { error, context })
+    }
+}
+
+/// A mismatch between expected and actual lengths during parsing.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct InvalidLength {
+    pub expected: u32,
+    pub actual: u32,
+}
+
+/// Represents errors that can arise during module parsing.
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub enum Error<Storage: Stream> {
+    /// Failed memory allocation.
+    AllocError,
+    /// A given section appears more than once in the module.
+    DuplicateSection(SectionId),
+    /// Parser context stack exceeded maximum depth to prevent stack overflow.
+    ExcessiveParsingDepth(ContextFrame),
+    /// Invalid bulk memory/table operation opcode encountered.
+    InvalidBulkOpcode(u32),
+    /// Invalid data segment token encountered.
+    InvalidDataToken(u32),
+    /// Invalid element segment token encountered.
+    InvalidElementToken(u32),
+    /// Function body length doesn't match the declared length.
+    InvalidFunctionLength(InvalidLength),
+    /// Invalid LEB128 encoding encountered.
+    InvalidLeb128,
+    /// Invalid WebAssembly magic number.
+    InvalidMagic(u32),
+    /// Section length doesn't match the declared length.
+    InvalidSectionLength(SectionId, InvalidLength),
+    /// Invalid byte token encountered during parsing.
+    InvalidToken(u8),
+    /// Invalid UTF-8 encoding in a name field.
+    InvalidUtf8,
+    /// Invalid value type encoding encountered.
+    InvalidValType(u8),
+    /// (Non-custom) sections appear in the wrong order.
+    OutOfOrderSection(SectionId, SectionId),
+    /// Error from the underlying storage.
+    Storage(Storage::Error),
+    /// Function declares too many local variables (exceeding an
+    /// implementation-defined limit).
+    TooManyLocals(usize),
+    /// Unsupported WebAssembly version number.
+    UnknownVersion(u32),
+}
+
+impl<Storage: Stream> fmt::Debug for Error<Storage> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Error::AllocError => write!(f, "allocation failure"),
+            Error::DuplicateSection(id) => write!(f, "duplicate of section ({id:?})"),
+            Error::ExcessiveParsingDepth(ContextFrame { context, offset }) => {
+                write!(f, "unexpected frame at {offset:#x}: {context}")
+            }
+            Error::InvalidBulkOpcode(op) => write!(f, "invalid bulk opcode ({op:#x})"),
+            Error::InvalidDataToken(token) => write!(f, "invalid data token ({token:#x})"),
+            Error::InvalidElementToken(token) => write!(f, "invalid element token ({token:#x})"),
+            Error::InvalidFunctionLength(InvalidLength { expected, actual }) => write!(
+                f,
+                "invalid func length: expected {expected:#x}; got {actual:#x}"
+            ),
+            Error::InvalidLeb128 => write!(f, "invalid LEB128-encoding"),
+            Error::InvalidMagic(magic) => write!(f, "invalid magic ({magic:#x})"),
+            Error::InvalidSectionLength(id, InvalidLength { expected, actual }) => write!(
+                f,
+                "invalid section length for {id:?}: expected {expected:#x}; got {actual:#x}"
+            ),
+            Error::InvalidToken(token) => write!(f, "invalid byte token ({token:#x})"),
+            Error::InvalidUtf8 => write!(f, "invalid UTF-8"),
+            Error::InvalidValType(valtype) => write!(f, "invalid valtype ({valtype:#x})"),
+            Error::OutOfOrderSection(id1, id2) => {
+                write!(f, "out-of-order sections: {id1:?} before {id2:?}")
+            }
+            Error::Storage(err) => write!(f, "{err:?}"),
+            Error::TooManyLocals(count) => {
+                write!(f, "too many locals: at least {count} were specified")
+            }
+            Error::UnknownVersion(version) => write!(f, "unknown version ({version:#x})"),
+        }
+    }
+}
+
+impl<Storage: Stream> leb128::Error for Error<Storage> {
+    fn invalid_leb128() -> Self {
+        Error::InvalidLeb128
+    }
+}
+
+impl<Storage: Stream> From<TryReserveError> for Error<Storage> {
+    fn from(_: TryReserveError) -> Self {
+        Error::AllocError
+    }
+}
+
+pub(crate) struct Parser<Storage: Stream> {
+    stream: Storage,
+}
+
+impl<Storage: Stream> Parser<Storage> {
+    fn new(stream: Storage) -> Self {
+        Self { stream }
+    }
+
+    // Pushes a context frame before a call, popping it if successful.
+    fn with_context<F, R>(
+        &mut self,
+        context: &mut ContextStack,
+        id: ContextId,
+        f: F,
+    ) -> Result<R, Error<Storage>>
+    where
+        F: FnOnce(&mut Self, &mut ContextStack) -> Result<R, Error<Storage>>,
+    {
+        let offset = self.stream.offset();
+        if !context.push(id, offset) {
+            return Err(Error::ExcessiveParsingDepth(ContextFrame {
+                context: id.into(),
+                offset,
+            }));
+        }
+        let val = f(self, context)?;
+        context.pop();
+        Ok(val)
+    }
+
+    fn offset(&mut self) -> usize {
+        self.stream.offset()
+    }
+
+    fn read_byte_raw(&mut self) -> Result<u8, Error<Storage>> {
+        self.stream.read_byte().map_err(Error::Storage)
+    }
+
+    fn read_leb128_raw<T: Leb128>(&mut self) -> Result<T, Error<Storage>> {
+        leb128::read(|| self.read_byte_raw())
+    }
+
+    fn read_zero_byte(&mut self, context: &mut ContextStack) -> Result<(), Error<Storage>> {
+        self.with_context(context, ContextId::Byte, |parser, _| {
+            let byte = parser.read_byte_raw()?;
+            if byte == 0 {
+                Ok(())
+            } else {
+                Err(Error::InvalidToken(byte))
+            }
+        })
+    }
+
+    fn read_exact_raw(&mut self, buf: &mut [u8]) -> Result<(), Error<Storage>> {
+        self.stream.read_exact(buf).map_err(Error::Storage)
+    }
+
+    fn read_exact(
+        &mut self,
+        context: &mut ContextStack,
+        buf: &mut [u8],
+    ) -> Result<(), Error<Storage>> {
+        self.with_context(context, ContextId::ReadingBytes, |parser, _| {
+            parser.read_exact_raw(buf)
+        })
+    }
+
+    fn skip_bytes(
+        &mut self,
+        context: &mut ContextStack,
+        count: usize,
+    ) -> Result<(), Error<Storage>> {
+        self.with_context(context, ContextId::SkippingBytes, |parser, _| {
+            parser.stream.skip_bytes(count).map_err(Error::Storage)
+        })
+    }
+
+    fn read_bytes<A: Allocator + Clone>(
+        &mut self,
+        context: &mut ContextStack,
+        count: usize,
+        alloc: &A,
+    ) -> Result<Box<[u8], A>, Error<Storage>> {
+        let mut buf = Vec::new_in(alloc.clone());
+        buf.try_reserve_exact(count)?;
+
+        // Safety: With the previous call to try_reserve_exact(), there is
+        // sufficient capacity and any uninitialized bytes will be overwritten
+        // in the call to read_exact() below.
+        unsafe { buf.set_len(count) };
+        self.read_exact(context, &mut buf)?;
+        Ok(buf.into_boxed_slice())
+    }
+
+    fn read<A: Allocator + Clone, T: Parsable<A> + Contextual>(
+        &mut self,
+        context: &mut ContextStack,
+        alloc: &A,
+    ) -> Result<T, Error<Storage>> {
+        self.with_context(context, T::ID, |parser, context| {
+            T::parse(parser, context, alloc)
+        })
+    }
+
+    fn read_bounded<T: BoundedParsable + Contextual>(
+        &mut self,
+        context: &mut ContextStack,
+    ) -> Result<T, Error<Storage>> {
+        self.with_context(context, T::ID, |parser, context| T::parse(parser, context))
+    }
+}
+
+// Types that can be parsed from a storage stream, possibly with allocation.
+trait Parsable<A>: Sized
+where
+    A: Allocator + Clone,
+{
+    /// Parse this type from the binary stream.
+    fn parse<Storage: Stream>(
+        parser: &mut Parser<Storage>,
+        context: &mut ContextStack,
+        alloc: &A,
+    ) -> Result<Self, Error<Storage>>;
+}
+
+// Types that can be parsed from a storage stream without allocation.
+trait BoundedParsable: Sized + Copy {
+    fn parse<Storage: Stream>(
+        parser: &mut Parser<Storage>,
+        context: &mut ContextStack,
+    ) -> Result<Self, Error<Storage>>;
+}
+
+impl<Bounded: BoundedParsable, A: Allocator + Clone> Parsable<A> for Bounded {
+    fn parse<Storage: Stream>(
+        parser: &mut Parser<Storage>,
+        context: &mut ContextStack,
+        _: &A,
+    ) -> Result<Self, Error<Storage>> {
+        <Self as BoundedParsable>::parse(parser, context)
+    }
+}
+
+/// Visitor pattern for processing custom sections during module parsing.
+pub trait CustomSectionVisitor<A: Allocator> {
+    /// Returns whether this visitor wants to process the custom section with the given name.
+    fn should_visit(&self, name: &str) -> bool;
+    /// Process a custom section. Only called if `should_visit` returned true.
+    fn visit(&mut self, custom: CustomSection<A>);
+}
+
+/// No-op implementation of `CustomSectionVisitor` that skips all custom sections.
+pub struct NoCustomSectionVisitor {}
+
+impl<A: Allocator> CustomSectionVisitor<A> for NoCustomSectionVisitor {
+    fn should_visit(&self, _: &str) -> bool {
+        false
+    }
+    fn visit(&mut self, _: CustomSection<A>) {
+        unreachable!()
+    }
+}
+
+/// Parse a WebAssembly module from a storage stream.
+///
+/// # Arguments
+/// * `context` - Context stack for error reporting
+/// * `storage` - Data stream containing WASM binary
+/// * `custom_visitor` - Handler for custom sections
+/// * `alloc` - Allocator for parsed data
+pub fn parse_module<Storage, CustomVisitor, A>(
+    context: &mut ContextStack,
+    storage: Storage,
+    custom_visitor: &mut CustomVisitor,
+    alloc: A,
+) -> Result<Module<A>, Error<Storage>>
+where
+    Storage: Stream,
+    CustomVisitor: CustomSectionVisitor<A>,
+    A: Allocator + Clone,
+{
+    let mut parser = Parser::new(storage);
+    parser.read_bounded::<Magic>(context)?;
+    let version: Version = parser.read_bounded(context)?;
+
+    let mut typesec = None;
+    let mut importsec = None;
+    let mut funcsec = None;
+    let mut tablesec = None;
+    let mut memsec = None;
+    let mut globalsec = None;
+    let mut exportsec = None;
+    let mut startsec = None;
+    let mut elemsec = None;
+    let mut datacountsec = None;
+    let mut codesec = None;
+    let mut datasec = None;
+
+    // The last section ID seen.
+    let mut last_id = None;
+    loop {
+        // There is no in-band signal in the WASM format for the end of a
+        // module. The best we can generically do is expect an EOF at a section
+        // boundary.
+        let id = parser.read_bounded(context);
+        if let Err(Error::Storage(ref err)) = id {
+            if Storage::is_eof(err) {
+                break;
+            }
+        }
+        let id = id?;
+
+        // Apart from custom sections, which can appear anywhere in the format,
+        // sections must appear at most once and in order.
+        if id != SectionId::Custom {
+            if let Some(last_id) = last_id {
+                if id <= last_id {
+                    return Err(Error::OutOfOrderSection(last_id, id));
+                }
+                if id == last_id {
+                    return Err(Error::DuplicateSection(id));
+                }
+            }
+            last_id = Some(id);
+        }
+
+        let len: u32 = parser.read_bounded(context)?;
+        let offset_start = parser.offset();
+        match id {
+            SectionId::Custom => {
+                let (name, len) = {
+                    let name_start = parser.offset();
+                    let name: Name<A> = parser.read(context, &alloc)?;
+                    let name_end = parser.offset();
+
+                    // If the name already exceeds the purported section length,
+                    // we can break now and have the invalid length error
+                    // reported below.
+                    let len = len as usize;
+                    if name_end - name_start > len {
+                        break;
+                    }
+                    (name, len - (name_end - name_start))
+                };
+                if custom_visitor.should_visit(name.as_ref()) {
+                    let bytes = parser.read_bytes(context, len, &alloc)?;
+                    custom_visitor.visit(CustomSection { name, bytes });
+                } else {
+                    parser.skip_bytes(context, len)?;
+                }
+            }
+            SectionId::Type => typesec = Some(parser.read(context, &alloc)?),
+            SectionId::Import => importsec = Some(parser.read(context, &alloc)?),
+            SectionId::Function => funcsec = Some(parser.read(context, &alloc)?),
+            SectionId::Table => tablesec = Some(parser.read(context, &alloc)?),
+            SectionId::Memory => memsec = Some(parser.read(context, &alloc)?),
+            SectionId::Global => globalsec = Some(parser.read(context, &alloc)?),
+            SectionId::Export => exportsec = Some(parser.read(context, &alloc)?),
+            SectionId::Start => startsec = Some(parser.read(context, &alloc)?),
+            SectionId::Element => elemsec = Some(parser.read(context, &alloc)?),
+            SectionId::Code => codesec = Some(parser.read(context, &alloc)?),
+            SectionId::Data => datasec = Some(parser.read(context, &alloc)?),
+            SectionId::DataCount => datacountsec = Some(parser.read(context, &alloc)?),
+        }
+        let actual_section_len = parser.offset() - offset_start;
+        if actual_section_len != (len as usize) {
+            return Err(Error::InvalidSectionLength(
+                id,
+                InvalidLength {
+                    expected: len,
+                    actual: actual_section_len as u32,
+                },
+            ));
+        }
+    }
+
+    Ok(Module {
+        version,
+        typesec,
+        importsec,
+        funcsec,
+        tablesec,
+        memsec,
+        globalsec,
+        exportsec,
+        startsec,
+        elemsec,
+        datacountsec,
+        codesec,
+        datasec,
+    })
+}
