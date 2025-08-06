@@ -13,7 +13,7 @@
 extern crate alloc;
 
 pub mod core_compat;
-pub mod parse;
+pub mod decode;
 pub mod storage;
 pub mod types;
 

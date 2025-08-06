@@ -21,7 +21,7 @@ flexibility, and performance
   of the standard library.
 - **Spec-compliant validation** - Full validation of the 1.0 WASM binary format,
   validated against the WebAssembly spec.git's own conformance test suite.
-- **Rich parse error context** - Detailed error during parsing detailing the
+- **Rich decoding error context** - Detailed error during parsing detailing the
   context frames down to where the error occurred (accomplished with a
   relatively small stack allocated context stack structure).
 
@@ -32,23 +32,23 @@ Abstraction over binary data sources supporting
 both in-memory buffers and streaming I/O. The `Stream` trait provides sequential
 reading with error handling and EOF detection.
 
-### Parsing (`parse`)
-Streaming parser with contextual error reporting.
-Maintains a context stack during parsing to provide detailed error locations.
-Handles all WASM object types with proper validation. Re-encodes WASM
-expressions from LEB128-encoded format into a naturally-aligned and
-repr(C)-encoded bytecode for later performant execution. Uses lookup tables for
-efficient instruction dispatch around operand re-encoding.
+### Decoding (`decoding`)
+Streaming decoding/parsing with contextual error reporting. Maintains a
+context stack during decoding to provide detailed error locations. Handles all
+WASM object types with proper validation. Re-encodes WASM expressions from
+LEB128-encoded format into a naturally-aligned and repr(C)-encoded bytecode for
+later performant execution. Uses lookup tables for efficient instruction
+dispatch around operand re-encoding.
 
 ```rust
-use wafer::{parse_module, storage::Buffer, parse::ContextStack, NoCustomSectionVisitor};
+use wafer::{decode_module, storage::Buffer, decode::ContextStack, NoCustomSectionVisitor};
 
 let wasm_bytes = include_bytes!("module.wasm");
 let storage = Buffer::new(wasm_bytes);
 let mut context = ContextStack::default();
 let mut visitor = NoCustomSectionVisitor;
 
-let module = parse_module(&mut context, storage, &mut visitor, std::alloc::Global)
+let module = decode_module(&mut context, storage, &mut visitor, std::alloc::Global)
     .with_context(&context)?;
 
 println!("Functions: {}", module.funcsec.as_ref().map_or(0, |s| s.len()));

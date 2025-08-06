@@ -4,7 +4,7 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT
 
-//! Parsable trait implementations for WebAssembly types.
+//! Decodable trait implementations for WebAssembly types.
 
 use core::ops;
 
@@ -17,7 +17,7 @@ use crate::storage::Stream;
 use crate::types::*;
 
 use super::{
-    BoundedParsable, ContextId, ContextStack, Contextual, Error, InvalidLength, Magic, Parsable,
+    BoundedDecodable, ContextId, ContextStack, Contextual, Decodable, Error, InvalidLength, Magic,
     Parser, transcode_expression,
 };
 
@@ -52,12 +52,12 @@ macro_rules! impl_contextual {
 
 macro_rules! impl_parsable_for_u8_enum {
     ($type:ty) => {
-        impl BoundedParsable for $type {
-            fn parse<Storage: Stream>(
-                parser: &mut Parser<Storage>,
+        impl BoundedDecodable for $type {
+            fn decode<Storage: Stream>(
+                decoder: &mut Parser<Storage>,
                 _: &mut ContextStack,
             ) -> Result<Self, Error<Storage>> {
-                let byte = parser.read_byte_raw()?;
+                let byte = decoder.read_byte_raw()?;
                 Self::try_from(byte).map_err(|_| Error::InvalidToken(byte))
             }
         }
@@ -66,12 +66,12 @@ macro_rules! impl_parsable_for_u8_enum {
 
 macro_rules! impl_parsable_for_leb128_u32_enum {
     ($type:ty, $make_err:path) => {
-        impl BoundedParsable for $type {
-            fn parse<Storage: Stream>(
-                parser: &mut Parser<Storage>,
+        impl BoundedDecodable for $type {
+            fn decode<Storage: Stream>(
+                decoder: &mut Parser<Storage>,
                 _: &mut ContextStack,
             ) -> Result<Self, Error<Storage>> {
-                let val: u32 = parser.read_leb128_raw()?;
+                let val: u32 = decoder.read_leb128_raw()?;
                 Self::try_from(val).map_err(|_| $make_err(val))
             }
         }
@@ -80,13 +80,13 @@ macro_rules! impl_parsable_for_leb128_u32_enum {
 
 macro_rules! impl_parsable_for_le_u32_enum {
     ($type:ty, $make_err:path) => {
-        impl BoundedParsable for $type {
-            fn parse<Storage: Stream>(
-                parser: &mut Parser<Storage>,
+        impl BoundedDecodable for $type {
+            fn decode<Storage: Stream>(
+                decoder: &mut Parser<Storage>,
                 _: &mut ContextStack,
             ) -> Result<Self, Error<Storage>> {
                 let mut buf = [0u8; 4];
-                parser.read_exact_raw(&mut buf)?;
+                decoder.read_exact_raw(&mut buf)?;
                 let val = u32::from_le_bytes(buf);
                 Self::try_from(val).map_err(|_| $make_err(val))
             }
@@ -96,47 +96,47 @@ macro_rules! impl_parsable_for_le_u32_enum {
 
 macro_rules! impl_parsable_for_newtype {
     ($type:ident<A>) => {
-        impl<A: Allocator + Clone> Parsable<A> for $type<A> {
-            fn parse<Storage: Stream>(
-                parser: &mut Parser<Storage>,
+        impl<A: Allocator + Clone> Decodable<A> for $type<A> {
+            fn decode<Storage: Stream>(
+                decoder: &mut Parser<Storage>,
                 context: &mut ContextStack,
                 alloc: &A,
             ) -> Result<Self, Error<Storage>> {
-                Ok(Self::new(<Self as ops::Deref>::Target::parse(
-                    parser, context, alloc,
+                Ok(Self::new(<Self as ops::Deref>::Target::decode(
+                    decoder, context, alloc,
                 )?))
             }
         }
     };
     ($type:ident) => {
-        impl BoundedParsable for $type {
-            fn parse<Storage: Stream>(
-                parser: &mut Parser<Storage>,
+        impl BoundedDecodable for $type {
+            fn decode<Storage: Stream>(
+                decoder: &mut Parser<Storage>,
                 context: &mut ContextStack,
             ) -> Result<Self, Error<Storage>> {
                 Ok(Self::new(
-                    <<Self as ops::Deref>::Target as BoundedParsable>::parse(parser, context)?,
+                    <<Self as ops::Deref>::Target as BoundedDecodable>::decode(decoder, context)?,
                 ))
             }
         }
     };
 }
 
-impl<T, A> Parsable<A> for Vec<T, A>
+impl<T, A> Decodable<A> for Vec<T, A>
 where
-    T: Parsable<A> + Contextual,
+    T: Decodable<A> + Contextual,
     A: Allocator + Clone,
 {
-    fn parse<Storage: Stream>(
-        parser: &mut Parser<Storage>,
+    fn decode<Storage: Stream>(
+        decoder: &mut Parser<Storage>,
         context: &mut ContextStack,
         alloc: &A,
     ) -> Result<Self, Error<Storage>> {
-        let mut len: u32 = parser.read_bounded(context)?;
+        let mut len: u32 = decoder.read_bounded(context)?;
         let mut vec = Vec::new_in(alloc.clone());
         vec.try_reserve_exact(len as usize)?;
         while len > 0 {
-            vec.push(parser.read(context, alloc)?);
+            vec.push(decoder.read(context, alloc)?);
             len -= 1;
         }
         Ok(vec)
@@ -255,143 +255,143 @@ impl_parsable_for_newtype!(ResultType<A>);
 impl_parsable_for_newtype!(TableSection<A>);
 impl_parsable_for_newtype!(TypeSection<A>);
 
-impl BoundedParsable for u8 {
-    fn parse<Storage: Stream>(
-        parser: &mut Parser<Storage>,
+impl BoundedDecodable for u8 {
+    fn decode<Storage: Stream>(
+        decoder: &mut Parser<Storage>,
         _: &mut ContextStack,
     ) -> Result<Self, Error<Storage>> {
-        parser.read_byte_raw()
+        decoder.read_byte_raw()
     }
 }
 
-impl BoundedParsable for u32 {
-    fn parse<Storage: Stream>(
-        parser: &mut Parser<Storage>,
+impl BoundedDecodable for u32 {
+    fn decode<Storage: Stream>(
+        decoder: &mut Parser<Storage>,
         _: &mut ContextStack,
     ) -> Result<Self, Error<Storage>> {
-        parser.read_leb128_raw()
+        decoder.read_leb128_raw()
     }
 }
 
-impl BoundedParsable for i32 {
-    fn parse<Storage: Stream>(
-        parser: &mut Parser<Storage>,
+impl BoundedDecodable for i32 {
+    fn decode<Storage: Stream>(
+        decoder: &mut Parser<Storage>,
         _: &mut ContextStack,
     ) -> Result<Self, Error<Storage>> {
-        parser.read_leb128_raw()
+        decoder.read_leb128_raw()
     }
 }
 
-impl BoundedParsable for i64 {
-    fn parse<Storage: Stream>(
-        parser: &mut Parser<Storage>,
+impl BoundedDecodable for i64 {
+    fn decode<Storage: Stream>(
+        decoder: &mut Parser<Storage>,
         _: &mut ContextStack,
     ) -> Result<Self, Error<Storage>> {
-        parser.read_leb128_raw()
+        decoder.read_leb128_raw()
     }
 }
 
-impl BoundedParsable for f32 {
-    fn parse<Storage: Stream>(
-        parser: &mut Parser<Storage>,
+impl BoundedDecodable for f32 {
+    fn decode<Storage: Stream>(
+        decoder: &mut Parser<Storage>,
         _: &mut ContextStack,
     ) -> Result<Self, Error<Storage>> {
         let mut buf = [0u8; 4];
-        parser.read_exact_raw(&mut buf)?;
+        decoder.read_exact_raw(&mut buf)?;
         Ok(f32::from_le_bytes(buf))
     }
 }
 
-impl BoundedParsable for f64 {
-    fn parse<Storage: Stream>(
-        parser: &mut Parser<Storage>,
+impl BoundedDecodable for f64 {
+    fn decode<Storage: Stream>(
+        decoder: &mut Parser<Storage>,
         _: &mut ContextStack,
     ) -> Result<Self, Error<Storage>> {
         let mut buf = [0u8; 8];
-        parser.read_exact_raw(&mut buf)?;
+        decoder.read_exact_raw(&mut buf)?;
         Ok(f64::from_le_bytes(buf))
     }
 }
 
-impl BoundedParsable for CallIndirectOperands {
-    fn parse<Storage: Stream>(
-        parser: &mut Parser<Storage>,
+impl BoundedDecodable for CallIndirectOperands {
+    fn decode<Storage: Stream>(
+        decoder: &mut Parser<Storage>,
         context: &mut ContextStack,
     ) -> Result<Self, Error<Storage>> {
         Ok(Self {
-            table: parser.read_bounded(context)?,
-            ty: parser.read_bounded(context)?,
+            table: decoder.read_bounded(context)?,
+            ty: decoder.read_bounded(context)?,
         })
     }
 }
 
-impl BoundedParsable for MemArg {
-    fn parse<Storage: Stream>(
-        parser: &mut Parser<Storage>,
+impl BoundedDecodable for MemArg {
+    fn decode<Storage: Stream>(
+        decoder: &mut Parser<Storage>,
         context: &mut ContextStack,
     ) -> Result<Self, Error<Storage>> {
         Ok(Self {
-            align: parser.read_bounded(context)?,
-            offset: parser.read_bounded(context)?,
+            align: decoder.read_bounded(context)?,
+            offset: decoder.read_bounded(context)?,
         })
     }
 }
 
-impl BoundedParsable for TableCopyOperands {
-    fn parse<Storage: Stream>(
-        parser: &mut Parser<Storage>,
+impl BoundedDecodable for TableCopyOperands {
+    fn decode<Storage: Stream>(
+        decoder: &mut Parser<Storage>,
         context: &mut ContextStack,
     ) -> Result<Self, Error<Storage>> {
         Ok(Self {
-            src: parser.read_bounded(context)?,
-            dst: parser.read_bounded(context)?,
+            src: decoder.read_bounded(context)?,
+            dst: decoder.read_bounded(context)?,
         })
     }
 }
 
-impl BoundedParsable for TableInitOperands {
-    fn parse<Storage: Stream>(
-        parser: &mut Parser<Storage>,
+impl BoundedDecodable for TableInitOperands {
+    fn decode<Storage: Stream>(
+        decoder: &mut Parser<Storage>,
         context: &mut ContextStack,
     ) -> Result<Self, Error<Storage>> {
         Ok(Self {
-            table: parser.read_bounded(context)?,
-            elem: parser.read_bounded(context)?,
+            table: decoder.read_bounded(context)?,
+            elem: decoder.read_bounded(context)?,
         })
     }
 }
 
-impl<A: Allocator + Clone> Parsable<A> for BrTableOperands<A> {
-    fn parse<Storage: Stream>(
-        parser: &mut Parser<Storage>,
+impl<A: Allocator + Clone> Decodable<A> for BrTableOperands<A> {
+    fn decode<Storage: Stream>(
+        decoder: &mut Parser<Storage>,
         context: &mut ContextStack,
         alloc: &A,
     ) -> Result<Self, Error<Storage>> {
         Ok(Self {
-            labels: parser.read(context, alloc)?,
-            default: parser.read_bounded(context)?,
+            labels: decoder.read(context, alloc)?,
+            default: decoder.read_bounded(context)?,
         })
     }
 }
 
-impl<A: Allocator + Clone> Parsable<A> for SelectTOperands<A> {
-    fn parse<Storage: Stream>(
-        parser: &mut Parser<Storage>,
+impl<A: Allocator + Clone> Decodable<A> for SelectTOperands<A> {
+    fn decode<Storage: Stream>(
+        decoder: &mut Parser<Storage>,
         context: &mut ContextStack,
         alloc: &A,
     ) -> Result<Self, Error<Storage>> {
         Ok(Self {
-            types: parser.read(context, alloc)?,
+            types: decoder.read(context, alloc)?,
         })
     }
 }
 
-impl BoundedParsable for BlockType {
-    fn parse<Storage: Stream>(
-        parser: &mut Parser<Storage>,
+impl BoundedDecodable for BlockType {
+    fn decode<Storage: Stream>(
+        decoder: &mut Parser<Storage>,
         context: &mut ContextStack,
     ) -> Result<Self, Error<Storage>> {
-        let value: i32 = parser.read_bounded(context)?;
+        let value: i32 = decoder.read_bounded(context)?;
         match value {
             n if n < 0 => {
                 // For single-byte values encoded as signed LEB128:
@@ -415,20 +415,20 @@ impl BoundedParsable for BlockType {
     }
 }
 
-impl<A: Allocator + Clone> Parsable<A> for Name<A> {
-    fn parse<Storage: Stream>(
-        parser: &mut Parser<Storage>,
+impl<A: Allocator + Clone> Decodable<A> for Name<A> {
+    fn decode<Storage: Stream>(
+        decoder: &mut Parser<Storage>,
         context: &mut ContextStack,
         alloc: &A,
     ) -> Result<Self, Error<Storage>> {
-        let len: u32 = parser.read_bounded(context)?;
+        let len: u32 = decoder.read_bounded(context)?;
         let mut bytes = Vec::new_in(alloc.clone());
         bytes.try_reserve_exact(len as usize)?;
         // Safety: With the previous call, there is sufficient capacity and any
         // uninitialized bytes will be overwritten in the next call to
         // read_exact().
         unsafe { bytes.set_len(len as usize) };
-        parser.read_exact(context, &mut bytes)?;
+        decoder.read_exact(context, &mut bytes)?;
 
         str::from_utf8(&bytes).map_err(|_| Error::InvalidUtf8)?;
         let bytes_ptr = Box::into_raw(bytes.into_boxed_slice());
@@ -446,16 +446,16 @@ enum FunctionTypeToken {
     Value = 0x60,
 }
 
-impl<A: Allocator + Clone> Parsable<A> for FunctionType<A> {
-    fn parse<Storage: Stream>(
-        parser: &mut Parser<Storage>,
+impl<A: Allocator + Clone> Decodable<A> for FunctionType<A> {
+    fn decode<Storage: Stream>(
+        decoder: &mut Parser<Storage>,
         context: &mut ContextStack,
         alloc: &A,
     ) -> Result<Self, Error<Storage>> {
-        parser.read_bounded::<FunctionTypeToken>(context)?;
+        decoder.read_bounded::<FunctionTypeToken>(context)?;
         Ok(Self {
-            parameters: parser.read(context, alloc)?,
-            results: parser.read(context, alloc)?,
+            parameters: decoder.read(context, alloc)?,
+            results: decoder.read(context, alloc)?,
         })
     }
 }
@@ -467,52 +467,52 @@ enum LimitsToken {
     WithMax = 0x01,
 }
 
-impl BoundedParsable for Limits {
-    fn parse<Storage: Stream>(
-        parser: &mut Parser<Storage>,
+impl BoundedDecodable for Limits {
+    fn decode<Storage: Stream>(
+        decoder: &mut Parser<Storage>,
         context: &mut ContextStack,
     ) -> Result<Self, Error<Storage>> {
-        let token: LimitsToken = parser.read_bounded(context)?;
-        let min: u32 = parser.read_bounded(context)?;
+        let token: LimitsToken = decoder.read_bounded(context)?;
+        let min: u32 = decoder.read_bounded(context)?;
         let max = match token {
             LimitsToken::WithoutMax => None,
-            LimitsToken::WithMax => Some(parser.read_bounded(context)?),
+            LimitsToken::WithMax => Some(decoder.read_bounded(context)?),
         };
         Ok(Self { min, max })
     }
 }
 
-impl BoundedParsable for TableType {
-    fn parse<Storage: Stream>(
-        parser: &mut Parser<Storage>,
+impl BoundedDecodable for TableType {
+    fn decode<Storage: Stream>(
+        decoder: &mut Parser<Storage>,
         context: &mut ContextStack,
     ) -> Result<Self, Error<Storage>> {
         Ok(Self {
-            reftype: parser.read_bounded(context)?,
-            limits: parser.read_bounded(context)?,
+            reftype: decoder.read_bounded(context)?,
+            limits: decoder.read_bounded(context)?,
         })
     }
 }
 
-impl BoundedParsable for GlobalType {
-    fn parse<Storage: Stream>(
-        parser: &mut Parser<Storage>,
+impl BoundedDecodable for GlobalType {
+    fn decode<Storage: Stream>(
+        decoder: &mut Parser<Storage>,
         context: &mut ContextStack,
     ) -> Result<Self, Error<Storage>> {
         Ok(Self {
-            value: parser.read_bounded(context)?,
-            mutability: parser.read_bounded(context)?,
+            value: decoder.read_bounded(context)?,
+            mutability: decoder.read_bounded(context)?,
         })
     }
 }
 
-impl<A: Allocator + Clone> Parsable<A> for Expression<A> {
-    fn parse<Storage: Stream>(
-        parser: &mut Parser<Storage>,
+impl<A: Allocator + Clone> Decodable<A> for Expression<A> {
+    fn decode<Storage: Stream>(
+        decoder: &mut Parser<Storage>,
         context: &mut ContextStack,
         alloc: &A,
     ) -> Result<Self, Error<Storage>> {
-        transcode_expression(parser, context, alloc)
+        transcode_expression(decoder, context, alloc)
     }
 }
 
@@ -524,45 +524,45 @@ enum ImportDescriptorToken {
     Memory = 0x2,
     Global = 0x3,
 }
-impl BoundedParsable for ImportDescriptor {
-    fn parse<Storage: Stream>(
-        parser: &mut Parser<Storage>,
+impl BoundedDecodable for ImportDescriptor {
+    fn decode<Storage: Stream>(
+        decoder: &mut Parser<Storage>,
         context: &mut ContextStack,
     ) -> Result<Self, Error<Storage>> {
         type Token = ImportDescriptorToken;
 
-        match parser.read_bounded(context)? {
-            Token::Function => Ok(ImportDescriptor::Function(parser.read_bounded(context)?)),
-            Token::Table => Ok(ImportDescriptor::Table(parser.read_bounded(context)?)),
-            Token::Memory => Ok(ImportDescriptor::Memory(parser.read_bounded(context)?)),
-            Token::Global => Ok(ImportDescriptor::Global(parser.read_bounded(context)?)),
+        match decoder.read_bounded(context)? {
+            Token::Function => Ok(ImportDescriptor::Function(decoder.read_bounded(context)?)),
+            Token::Table => Ok(ImportDescriptor::Table(decoder.read_bounded(context)?)),
+            Token::Memory => Ok(ImportDescriptor::Memory(decoder.read_bounded(context)?)),
+            Token::Global => Ok(ImportDescriptor::Global(decoder.read_bounded(context)?)),
         }
     }
 }
 
-impl<A: Allocator + Clone> Parsable<A> for Import<A> {
-    fn parse<Storage: Stream>(
-        parser: &mut Parser<Storage>,
+impl<A: Allocator + Clone> Decodable<A> for Import<A> {
+    fn decode<Storage: Stream>(
+        decoder: &mut Parser<Storage>,
         context: &mut ContextStack,
         alloc: &A,
     ) -> Result<Self, Error<Storage>> {
         Ok(Self {
-            module: parser.read(context, alloc)?,
-            field: parser.read(context, alloc)?,
-            descriptor: parser.read_bounded(context)?,
+            module: decoder.read(context, alloc)?,
+            field: decoder.read(context, alloc)?,
+            descriptor: decoder.read_bounded(context)?,
         })
     }
 }
 
-impl<A: Allocator + Clone> Parsable<A> for Global<A> {
-    fn parse<Storage: Stream>(
-        parser: &mut Parser<Storage>,
+impl<A: Allocator + Clone> Decodable<A> for Global<A> {
+    fn decode<Storage: Stream>(
+        decoder: &mut Parser<Storage>,
         context: &mut ContextStack,
         alloc: &A,
     ) -> Result<Self, Error<Storage>> {
         Ok(Self {
-            ty: parser.read_bounded(context)?,
-            init: parser.read(context, alloc)?,
+            ty: decoder.read_bounded(context)?,
+            init: decoder.read(context, alloc)?,
         })
     }
 }
@@ -575,49 +575,49 @@ enum ExportDescriptorToken {
     Memory = 0x2,
     Global = 0x3,
 }
-impl BoundedParsable for ExportDescriptor {
-    fn parse<Storage: Stream>(
-        parser: &mut Parser<Storage>,
+impl BoundedDecodable for ExportDescriptor {
+    fn decode<Storage: Stream>(
+        decoder: &mut Parser<Storage>,
         context: &mut ContextStack,
     ) -> Result<Self, Error<Storage>> {
         type Token = ExportDescriptorToken;
 
-        match parser.read_bounded(context)? {
-            Token::Function => Ok(ExportDescriptor::Function(parser.read_bounded(context)?)),
-            Token::Table => Ok(ExportDescriptor::Table(parser.read_bounded(context)?)),
-            Token::Memory => Ok(ExportDescriptor::Memory(parser.read_bounded(context)?)),
-            Token::Global => Ok(ExportDescriptor::Global(parser.read_bounded(context)?)),
+        match decoder.read_bounded(context)? {
+            Token::Function => Ok(ExportDescriptor::Function(decoder.read_bounded(context)?)),
+            Token::Table => Ok(ExportDescriptor::Table(decoder.read_bounded(context)?)),
+            Token::Memory => Ok(ExportDescriptor::Memory(decoder.read_bounded(context)?)),
+            Token::Global => Ok(ExportDescriptor::Global(decoder.read_bounded(context)?)),
         }
     }
 }
 
-impl<A: Allocator + Clone> Parsable<A> for Export<A> {
-    fn parse<Storage: Stream>(
-        parser: &mut Parser<Storage>,
+impl<A: Allocator + Clone> Decodable<A> for Export<A> {
+    fn decode<Storage: Stream>(
+        decoder: &mut Parser<Storage>,
         context: &mut ContextStack,
         alloc: &A,
     ) -> Result<Self, Error<Storage>> {
         Ok(Self {
-            field: parser.read(context, alloc)?,
-            descriptor: parser.read_bounded(context)?,
+            field: decoder.read(context, alloc)?,
+            descriptor: decoder.read_bounded(context)?,
         })
     }
 }
 
-impl<A: Allocator + Clone> Parsable<A> for ElementSegment<A> {
-    fn parse<Storage: Stream>(
-        parser: &mut Parser<Storage>,
+impl<A: Allocator + Clone> Decodable<A> for ElementSegment<A> {
+    fn decode<Storage: Stream>(
+        decoder: &mut Parser<Storage>,
         context: &mut ContextStack,
         alloc: &A,
     ) -> Result<Self, Error<Storage>> {
-        let token: ElementSegmentToken = parser.read_bounded(context)?;
+        let token: ElementSegmentToken = decoder.read_bounded(context)?;
         match token {
             ElementSegmentToken::ActiveElemIndices => {
                 let active = ElementModeActive {
                     table: TableIdx::new(0),
-                    offset: parser.read(context, alloc)?,
+                    offset: decoder.read(context, alloc)?,
                 };
-                let funcs: Vec<FuncIdx, A> = parser.read(context, alloc)?;
+                let funcs: Vec<FuncIdx, A> = decoder.read(context, alloc)?;
                 Ok(ElementSegment {
                     ty: RefType::Func,
                     init: ElementInit::FunctionIndices(funcs),
@@ -625,8 +625,8 @@ impl<A: Allocator + Clone> Parsable<A> for ElementSegment<A> {
                 })
             }
             ElementSegmentToken::PassiveElemIndices => {
-                let kind: ElementKind = parser.read_bounded(context)?;
-                let funcs: Vec<FuncIdx, A> = parser.read(context, alloc)?;
+                let kind: ElementKind = decoder.read_bounded(context)?;
+                let funcs: Vec<FuncIdx, A> = decoder.read(context, alloc)?;
                 Ok(ElementSegment {
                     ty: kind.into(),
                     init: ElementInit::FunctionIndices(funcs),
@@ -635,11 +635,11 @@ impl<A: Allocator + Clone> Parsable<A> for ElementSegment<A> {
             }
             ElementSegmentToken::ActiveTableIndexElemIndices => {
                 let active = ElementModeActive {
-                    table: parser.read(context, alloc)?,
-                    offset: parser.read(context, alloc)?,
+                    table: decoder.read(context, alloc)?,
+                    offset: decoder.read(context, alloc)?,
                 };
-                let kind: ElementKind = parser.read_bounded(context)?;
-                let funcs: Vec<FuncIdx, A> = parser.read(context, alloc)?;
+                let kind: ElementKind = decoder.read_bounded(context)?;
+                let funcs: Vec<FuncIdx, A> = decoder.read(context, alloc)?;
                 Ok(ElementSegment {
                     ty: kind.into(),
                     init: ElementInit::FunctionIndices(funcs),
@@ -647,8 +647,8 @@ impl<A: Allocator + Clone> Parsable<A> for ElementSegment<A> {
                 })
             }
             ElementSegmentToken::DeclarativeElemIndices => {
-                let kind: ElementKind = parser.read_bounded(context)?;
-                let funcs: Vec<FuncIdx, A> = parser.read(context, alloc)?;
+                let kind: ElementKind = decoder.read_bounded(context)?;
+                let funcs: Vec<FuncIdx, A> = decoder.read(context, alloc)?;
                 Ok(ElementSegment {
                     ty: kind.into(),
                     init: ElementInit::FunctionIndices(funcs),
@@ -658,9 +658,9 @@ impl<A: Allocator + Clone> Parsable<A> for ElementSegment<A> {
             ElementSegmentToken::ActiveElemExprs => {
                 let active = ElementModeActive {
                     table: TableIdx::new(0),
-                    offset: parser.read(context, alloc)?,
+                    offset: decoder.read(context, alloc)?,
                 };
-                let exprs: Vec<Expression<A>, A> = parser.read(context, alloc)?;
+                let exprs: Vec<Expression<A>, A> = decoder.read(context, alloc)?;
                 Ok(ElementSegment {
                     ty: RefType::Func,
                     init: ElementInit::Expressions(exprs),
@@ -668,8 +668,8 @@ impl<A: Allocator + Clone> Parsable<A> for ElementSegment<A> {
                 })
             }
             ElementSegmentToken::PassiveElemExprs => {
-                let reftype: RefType = parser.read_bounded(context)?;
-                let exprs: Vec<Expression<A>, A> = parser.read(context, alloc)?;
+                let reftype: RefType = decoder.read_bounded(context)?;
+                let exprs: Vec<Expression<A>, A> = decoder.read(context, alloc)?;
                 Ok(ElementSegment {
                     ty: reftype,
                     init: ElementInit::Expressions(exprs),
@@ -678,11 +678,11 @@ impl<A: Allocator + Clone> Parsable<A> for ElementSegment<A> {
             }
             ElementSegmentToken::ActiveTableIndexElemExprs => {
                 let active = ElementModeActive {
-                    table: parser.read(context, alloc)?,
-                    offset: parser.read(context, alloc)?,
+                    table: decoder.read(context, alloc)?,
+                    offset: decoder.read(context, alloc)?,
                 };
-                let reftype: RefType = parser.read_bounded(context)?;
-                let exprs: Vec<Expression<A>, A> = parser.read(context, alloc)?;
+                let reftype: RefType = decoder.read_bounded(context)?;
+                let exprs: Vec<Expression<A>, A> = decoder.read(context, alloc)?;
                 Ok(ElementSegment {
                     ty: reftype,
                     init: ElementInit::Expressions(exprs),
@@ -690,8 +690,8 @@ impl<A: Allocator + Clone> Parsable<A> for ElementSegment<A> {
                 })
             }
             ElementSegmentToken::DeclarativeElemExprs => {
-                let reftype: RefType = parser.read_bounded(context)?;
-                let exprs: Vec<Expression<A>, A> = parser.read(context, alloc)?;
+                let reftype: RefType = decoder.read_bounded(context)?;
+                let exprs: Vec<Expression<A>, A> = decoder.read(context, alloc)?;
                 Ok(ElementSegment {
                     ty: reftype,
                     init: ElementInit::Expressions(exprs),
@@ -729,17 +729,17 @@ impl From<ElementKind> for RefType {
     }
 }
 
-impl<A: Allocator + Clone> Parsable<A> for Locals<A> {
-    fn parse<Storage: Stream>(
-        parser: &mut Parser<Storage>,
+impl<A: Allocator + Clone> Decodable<A> for Locals<A> {
+    fn decode<Storage: Stream>(
+        decoder: &mut Parser<Storage>,
         context: &mut ContextStack,
         alloc: &A,
     ) -> Result<Self, Error<Storage>> {
-        let num_groups: u32 = parser.read_bounded(context)?;
+        let num_groups: u32 = decoder.read_bounded(context)?;
         let mut locals = Vec::new_in(alloc.clone());
         for _ in 0..num_groups {
-            let count: u32 = parser.read_bounded(context)?;
-            let local = Local::from(parser.read_bounded::<ValType>(context)?);
+            let count: u32 = decoder.read_bounded(context)?;
+            let local = Local::from(decoder.read_bounded::<ValType>(context)?);
             let subtotal = locals.len() + (count as usize);
             if subtotal > MAX_LOCALS_PER_FUNCTION {
                 return Err(Error::TooManyLocals(subtotal));
@@ -764,17 +764,17 @@ impl From<ValType> for Local {
     }
 }
 
-impl<A: Allocator + Clone> Parsable<A> for Function<A> {
-    fn parse<Storage: Stream>(
-        parser: &mut Parser<Storage>,
+impl<A: Allocator + Clone> Decodable<A> for Function<A> {
+    fn decode<Storage: Stream>(
+        decoder: &mut Parser<Storage>,
         context: &mut ContextStack,
         alloc: &A,
     ) -> Result<Self, Error<Storage>> {
-        let expected_size = parser.read_bounded::<u32>(context)? as usize;
-        let offset_start = parser.offset();
-        let locals = parser.read(context, alloc)?;
-        let code = parser.read(context, alloc)?;
-        let actual_size = parser.offset() - offset_start;
+        let expected_size = decoder.read_bounded::<u32>(context)? as usize;
+        let offset_start = decoder.offset();
+        let locals = decoder.read(context, alloc)?;
+        let code = decoder.read(context, alloc)?;
+        let actual_size = decoder.offset() - offset_start;
         if expected_size != actual_size {
             return Err(Error::InvalidFunctionLength(InvalidLength {
                 expected: expected_size as u32,
@@ -793,17 +793,17 @@ enum DataSegmentToken {
     ActiveWithMemIdx = 2,
 }
 
-impl<A: Allocator + Clone> Parsable<A> for DataSegment<A> {
-    fn parse<Storage: Stream>(
-        parser: &mut Parser<Storage>,
+impl<A: Allocator + Clone> Decodable<A> for DataSegment<A> {
+    fn decode<Storage: Stream>(
+        decoder: &mut Parser<Storage>,
         context: &mut ContextStack,
         alloc: &A,
     ) -> Result<Self, Error<Storage>> {
-        let token: DataSegmentToken = parser.read_bounded(context)?;
+        let token: DataSegmentToken = decoder.read_bounded(context)?;
         match token {
             DataSegmentToken::ActiveNoMemIdx => {
-                let offset: Expression<A> = parser.read(context, alloc)?;
-                let init: Vec<u8, A> = parser.read(context, alloc)?;
+                let offset: Expression<A> = decoder.read(context, alloc)?;
+                let init: Vec<u8, A> = decoder.read(context, alloc)?;
                 Ok(Self {
                     init,
                     mode: DataMode::Active(DataModeActive {
@@ -813,13 +813,13 @@ impl<A: Allocator + Clone> Parsable<A> for DataSegment<A> {
                 })
             }
             DataSegmentToken::Passive => Ok(Self {
-                init: parser.read(context, alloc)?,
+                init: decoder.read(context, alloc)?,
                 mode: DataMode::Passive(),
             }),
             DataSegmentToken::ActiveWithMemIdx => {
-                let memory = parser.read_bounded(context)?;
-                let offset: Expression<A> = parser.read(context, alloc)?;
-                let init: Vec<u8, A> = parser.read(context, alloc)?;
+                let memory = decoder.read_bounded(context)?;
+                let offset: Expression<A> = decoder.read(context, alloc)?;
+                let init: Vec<u8, A> = decoder.read(context, alloc)?;
                 Ok(Self {
                     init,
                     mode: DataMode::Active(DataModeActive { memory, offset }),

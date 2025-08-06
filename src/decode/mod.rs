@@ -6,9 +6,9 @@
 
 //! WebAssembly binary format parsing.
 
+mod decodable_impls;
 mod expr;
 mod leb128;
-mod parsable_impls;
 
 use expr::transcode_expression;
 
@@ -28,7 +28,7 @@ use crate::types::{CustomSection, Module, Name, SectionId, Version};
 // the lower bound implicitly suggested by the spec).
 const MAX_DEPTH: usize = 6;
 
-// We represent this as an enum with one value to leverage existing "parse this
+// We represent this as an enum with one value to leverage existing "decode this
 // u32 enum" machinery to check for a valid magic value.
 #[derive(Clone, Copy, Debug, TryFromPrimitive)]
 #[repr(u32)]
@@ -248,7 +248,7 @@ impl ContextStack {
 }
 
 /// A parsing error with additional context around what hierarchy of things were
-/// being parsed at the time.
+/// being decoded at the time.
 pub struct ContextualError<'a, Storage: Stream> {
     /// The underlying parsing error.
     pub error: Error<Storage>,
@@ -271,10 +271,10 @@ impl<Storage: Stream> fmt::Debug for ContextualError<'_, Storage> {
 
 /// Extension trait for adding context to parsing results. This is implemented
 /// by `Result<T, Error<Storage>` and the intent is that this is chained from a
-/// call to `parse_module()`:
+/// call to `decode_module()`:
 /// ```rust,ignore
 /// let context = ContextStack::default();
-/// parse_module(&mut context, storage, visitor, alloc).with_context(&context).unwrap();
+/// decode_module(&mut context, storage, visitor, alloc).with_context(&context).unwrap();
 /// ```
 pub trait ContextualResult<'a, T, Storage: Stream> {
     /// Attach context information to this result for improved error reporting.
@@ -426,8 +426,8 @@ impl<Storage: Stream> Parser<Storage> {
     }
 
     fn read_zero_byte(&mut self, context: &mut ContextStack) -> Result<(), Error<Storage>> {
-        self.with_context(context, ContextId::Byte, |parser, _| {
-            let byte = parser.read_byte_raw()?;
+        self.with_context(context, ContextId::Byte, |decoder, _| {
+            let byte = decoder.read_byte_raw()?;
             if byte == 0 {
                 Ok(())
             } else {
@@ -445,8 +445,8 @@ impl<Storage: Stream> Parser<Storage> {
         context: &mut ContextStack,
         buf: &mut [u8],
     ) -> Result<(), Error<Storage>> {
-        self.with_context(context, ContextId::ReadingBytes, |parser, _| {
-            parser.read_exact_raw(buf)
+        self.with_context(context, ContextId::ReadingBytes, |decoder, _| {
+            decoder.read_exact_raw(buf)
         })
     }
 
@@ -455,8 +455,8 @@ impl<Storage: Stream> Parser<Storage> {
         context: &mut ContextStack,
         count: usize,
     ) -> Result<(), Error<Storage>> {
-        self.with_context(context, ContextId::SkippingBytes, |parser, _| {
-            parser.stream.skip_bytes(count).map_err(Error::Storage)
+        self.with_context(context, ContextId::SkippingBytes, |decoder, _| {
+            decoder.stream.skip_bytes(count).map_err(Error::Storage)
         })
     }
 
@@ -477,52 +477,54 @@ impl<Storage: Stream> Parser<Storage> {
         Ok(buf.into_boxed_slice())
     }
 
-    fn read<A: Allocator + Clone, T: Parsable<A> + Contextual>(
+    fn read<A: Allocator + Clone, T: Decodable<A> + Contextual>(
         &mut self,
         context: &mut ContextStack,
         alloc: &A,
     ) -> Result<T, Error<Storage>> {
-        self.with_context(context, T::ID, |parser, context| {
-            T::parse(parser, context, alloc)
+        self.with_context(context, T::ID, |decoder, context| {
+            T::decode(decoder, context, alloc)
         })
     }
 
-    fn read_bounded<T: BoundedParsable + Contextual>(
+    fn read_bounded<T: BoundedDecodable + Contextual>(
         &mut self,
         context: &mut ContextStack,
     ) -> Result<T, Error<Storage>> {
-        self.with_context(context, T::ID, |parser, context| T::parse(parser, context))
+        self.with_context(context, T::ID, |decoder, context| {
+            T::decode(decoder, context)
+        })
     }
 }
 
-// Types that can be parsed from a storage stream, possibly with allocation.
-trait Parsable<A>: Sized
+// Types that can be decoded from a storage stream, possibly with allocation.
+trait Decodable<A>: Sized
 where
     A: Allocator + Clone,
 {
     /// Parse this type from the binary stream.
-    fn parse<Storage: Stream>(
-        parser: &mut Parser<Storage>,
+    fn decode<Storage: Stream>(
+        decoder: &mut Parser<Storage>,
         context: &mut ContextStack,
         alloc: &A,
     ) -> Result<Self, Error<Storage>>;
 }
 
-// Types that can be parsed from a storage stream without allocation.
-trait BoundedParsable: Sized + Copy {
-    fn parse<Storage: Stream>(
-        parser: &mut Parser<Storage>,
+// Types that can be decoded from a storage stream without allocation.
+trait BoundedDecodable: Sized + Copy {
+    fn decode<Storage: Stream>(
+        decoder: &mut Parser<Storage>,
         context: &mut ContextStack,
     ) -> Result<Self, Error<Storage>>;
 }
 
-impl<Bounded: BoundedParsable, A: Allocator + Clone> Parsable<A> for Bounded {
-    fn parse<Storage: Stream>(
-        parser: &mut Parser<Storage>,
+impl<Bounded: BoundedDecodable, A: Allocator + Clone> Decodable<A> for Bounded {
+    fn decode<Storage: Stream>(
+        decoder: &mut Parser<Storage>,
         context: &mut ContextStack,
         _: &A,
     ) -> Result<Self, Error<Storage>> {
-        <Self as BoundedParsable>::parse(parser, context)
+        <Self as BoundedDecodable>::decode(decoder, context)
     }
 }
 
@@ -552,8 +554,8 @@ impl<A: Allocator> CustomSectionVisitor<A> for NoCustomSectionVisitor {
 /// * `context` - Context stack for error reporting
 /// * `storage` - Data stream containing WASM binary
 /// * `custom_visitor` - Handler for custom sections
-/// * `alloc` - Allocator for parsed data
-pub fn parse_module<Storage, CustomVisitor, A>(
+/// * `alloc` - Allocator for decoded data
+pub fn decode_module<Storage, CustomVisitor, A>(
     context: &mut ContextStack,
     storage: Storage,
     custom_visitor: &mut CustomVisitor,
@@ -564,9 +566,9 @@ where
     CustomVisitor: CustomSectionVisitor<A>,
     A: Allocator + Clone,
 {
-    let mut parser = Parser::new(storage);
-    parser.read_bounded::<Magic>(context)?;
-    let version: Version = parser.read_bounded(context)?;
+    let mut decoder = Parser::new(storage);
+    decoder.read_bounded::<Magic>(context)?;
+    let version: Version = decoder.read_bounded(context)?;
 
     let mut typesec = None;
     let mut importsec = None;
@@ -587,7 +589,7 @@ where
         // There is no in-band signal in the WASM format for the end of a
         // module. The best we can generically do is expect an EOF at a section
         // boundary.
-        let id = parser.read_bounded(context);
+        let id = decoder.read_bounded(context);
         if let Err(Error::Storage(ref err)) = id {
             if Storage::is_eof(err) {
                 break;
@@ -609,14 +611,14 @@ where
             last_id = Some(id);
         }
 
-        let len: u32 = parser.read_bounded(context)?;
-        let offset_start = parser.offset();
+        let len: u32 = decoder.read_bounded(context)?;
+        let offset_start = decoder.offset();
         match id {
             SectionId::Custom => {
                 let (name, len) = {
-                    let name_start = parser.offset();
-                    let name: Name<A> = parser.read(context, &alloc)?;
-                    let name_end = parser.offset();
+                    let name_start = decoder.offset();
+                    let name: Name<A> = decoder.read(context, &alloc)?;
+                    let name_end = decoder.offset();
 
                     // If the name already exceeds the purported section length,
                     // we can break now and have the invalid length error
@@ -628,26 +630,26 @@ where
                     (name, len - (name_end - name_start))
                 };
                 if custom_visitor.should_visit(name.as_ref()) {
-                    let bytes = parser.read_bytes(context, len, &alloc)?;
+                    let bytes = decoder.read_bytes(context, len, &alloc)?;
                     custom_visitor.visit(CustomSection { name, bytes });
                 } else {
-                    parser.skip_bytes(context, len)?;
+                    decoder.skip_bytes(context, len)?;
                 }
             }
-            SectionId::Type => typesec = Some(parser.read(context, &alloc)?),
-            SectionId::Import => importsec = Some(parser.read(context, &alloc)?),
-            SectionId::Function => funcsec = Some(parser.read(context, &alloc)?),
-            SectionId::Table => tablesec = Some(parser.read(context, &alloc)?),
-            SectionId::Memory => memsec = Some(parser.read(context, &alloc)?),
-            SectionId::Global => globalsec = Some(parser.read(context, &alloc)?),
-            SectionId::Export => exportsec = Some(parser.read(context, &alloc)?),
-            SectionId::Start => startsec = Some(parser.read(context, &alloc)?),
-            SectionId::Element => elemsec = Some(parser.read(context, &alloc)?),
-            SectionId::Code => codesec = Some(parser.read(context, &alloc)?),
-            SectionId::Data => datasec = Some(parser.read(context, &alloc)?),
-            SectionId::DataCount => datacountsec = Some(parser.read(context, &alloc)?),
+            SectionId::Type => typesec = Some(decoder.read(context, &alloc)?),
+            SectionId::Import => importsec = Some(decoder.read(context, &alloc)?),
+            SectionId::Function => funcsec = Some(decoder.read(context, &alloc)?),
+            SectionId::Table => tablesec = Some(decoder.read(context, &alloc)?),
+            SectionId::Memory => memsec = Some(decoder.read(context, &alloc)?),
+            SectionId::Global => globalsec = Some(decoder.read(context, &alloc)?),
+            SectionId::Export => exportsec = Some(decoder.read(context, &alloc)?),
+            SectionId::Start => startsec = Some(decoder.read(context, &alloc)?),
+            SectionId::Element => elemsec = Some(decoder.read(context, &alloc)?),
+            SectionId::Code => codesec = Some(decoder.read(context, &alloc)?),
+            SectionId::Data => datasec = Some(decoder.read(context, &alloc)?),
+            SectionId::DataCount => datacountsec = Some(decoder.read(context, &alloc)?),
         }
-        let actual_section_len = parser.offset() - offset_start;
+        let actual_section_len = decoder.offset() - offset_start;
         if actual_section_len != (len as usize) {
             return Err(Error::InvalidSectionLength(
                 id,
