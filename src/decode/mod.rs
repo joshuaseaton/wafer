@@ -18,11 +18,12 @@ use num_enum::TryFromPrimitive;
 
 use leb128::Leb128;
 
+use crate::Module;
 use crate::core_compat::alloc::{Allocator, collections::TryReserveError};
 use crate::core_compat::boxed::Box;
 use crate::core_compat::vec::Vec;
 use crate::storage::Stream;
-use crate::types::{CustomSection, Module, Name, SectionId, Version};
+use crate::types::{CustomSection, Name, SectionId, Version};
 
 // The maximum parsing depth of this implementation (which is also pretty much
 // the lower bound implicitly suggested by the spec).
@@ -196,10 +197,10 @@ trait Contextual {
     const ID: ContextId;
 }
 
-/// A single frame in the parsing context stack.
+/// A frame of parsing context.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ContextFrame {
-    /// The type of context.
+    /// A description of what is being parsed.
     pub context: &'static str,
 
     /// Byte offset in the stream where this context was entered.
@@ -208,7 +209,7 @@ pub struct ContextFrame {
 
 /// Stack for tracking parsing context during error reporting.
 #[derive(Clone, Debug, Default)]
-pub struct ContextStack {
+pub(crate) struct ContextStack {
     offsets: [usize; MAX_DEPTH],
     ids: [ContextId; MAX_DEPTH],
     depth: u8,
@@ -235,7 +236,7 @@ impl ContextStack {
 
     /// Returns an iterator over frames in "pushed" order (outermost to
     /// innermost).
-    pub fn iter(&self) -> impl Iterator<Item = ContextFrame> + '_ {
+    pub(crate) fn iter(&self) -> impl Iterator<Item = ContextFrame> + '_ {
         self.offsets
             .iter()
             .zip(&self.ids)
@@ -249,13 +250,13 @@ impl ContextStack {
 
 /// A parsing error with additional context around what hierarchy of things were
 /// being decoded at the time.
-pub struct ContextualError<'a, Storage: Stream> {
+pub struct ErrorWithContext<Storage: Stream> {
     /// The underlying parsing error.
     pub error: Error<Storage>,
-    context: &'a ContextStack,
+    pub(crate) context: ContextStack,
 }
 
-impl<Storage: Stream> fmt::Debug for ContextualError<'_, Storage> {
+impl<Storage: Stream> fmt::Debug for ErrorWithContext<Storage> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}", self.error)?;
         for (i, frame) in self.context.iter().enumerate() {
@@ -266,24 +267,6 @@ impl<Storage: Stream> fmt::Debug for ContextualError<'_, Storage> {
             write!(f, "{}", frame.context)?;
         }
         Ok(())
-    }
-}
-
-/// Extension trait for adding context to parsing results. This is implemented
-/// by `Result<T, Error<Storage>` and the intent is that this is chained from a
-/// call to `decode_module()`:
-/// ```rust,ignore
-/// let context = ContextStack::default();
-/// decode_module(&mut context, storage, visitor, alloc).with_context(&context).unwrap();
-/// ```
-pub trait ContextualResult<'a, T, Storage: Stream> {
-    /// Attach context information to this result for improved error reporting.
-    fn with_context(self, context: &'a ContextStack) -> Result<T, ContextualError<'a, Storage>>;
-}
-
-impl<'a, T, Storage: Stream> ContextualResult<'a, T, Storage> for Result<T, Error<Storage>> {
-    fn with_context(self, context: &'a ContextStack) -> Result<T, ContextualError<'a, Storage>> {
-        self.map_err(|error| ContextualError { error, context })
     }
 }
 
@@ -548,22 +531,22 @@ impl<A: Allocator> CustomSectionVisitor<A> for NoCustomSectionVisitor {
     }
 }
 
-/// Parse a WebAssembly module from a storage stream.
-///
-/// # Arguments
-/// * `context` - Context stack for error reporting
-/// * `storage` - Data stream containing WASM binary
-/// * `custom_visitor` - Handler for custom sections
-/// * `alloc` - Allocator for decoded data
-pub fn decode_module<Storage, CustomVisitor, A>(
-    context: &mut ContextStack,
+// Parse a WebAssembly module from a storage stream.
+//
+// # Arguments
+// * `context` - Context stack for error reporting
+// * `storage` - Data stream containing WASM binary
+// * `customsec_visitor` - Handler for custom sections
+// * `alloc` - Allocator for decoded data
+pub(crate) fn decode_module<Storage, CustomSecVisitor, A>(
     storage: Storage,
-    custom_visitor: &mut CustomVisitor,
+    context: &mut ContextStack,
+    customsec_visitor: &mut CustomSecVisitor,
     alloc: A,
 ) -> Result<Module<A>, Error<Storage>>
 where
     Storage: Stream,
-    CustomVisitor: CustomSectionVisitor<A>,
+    CustomSecVisitor: CustomSectionVisitor<A>,
     A: Allocator + Clone,
 {
     let mut decoder = Parser::new(storage);
@@ -629,9 +612,9 @@ where
                     }
                     (name, len - (name_end - name_start))
                 };
-                if custom_visitor.should_visit(name.as_ref()) {
+                if customsec_visitor.should_visit(name.as_ref()) {
                     let bytes = decoder.read_bytes(context, len, &alloc)?;
-                    custom_visitor.visit(CustomSection { name, bytes });
+                    customsec_visitor.visit(CustomSection { name, bytes });
                 } else {
                     decoder.skip_bytes(context, len)?;
                 }

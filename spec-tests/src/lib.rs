@@ -8,10 +8,9 @@ use std::fs::File;
 use std::io;
 
 use spec_test_macro::wasm_spec_tests;
+use wafer::Module;
 use wafer::core_compat::alloc;
-use wafer::decode::{
-    ContextStack, ContextualResult as _, Error, NoCustomSectionVisitor, decode_module,
-};
+use wafer::decode::{Error, NoCustomSectionVisitor};
 use wafer::storage::Stream;
 
 #[derive(Debug)]
@@ -57,14 +56,11 @@ impl<R: io::Read + io::Seek> Stream for BufReader<R> {
 #[allow(unused)]
 fn check_module(wasm: &str) {
     let f = File::open(wasm).unwrap();
-    let mut context = ContextStack::default();
-    decode_module(
-        &mut context,
+    Module::decode(
         io::BufReader::new(f),
         &mut NoCustomSectionVisitor {},
         alloc::Global,
     )
-    .with_context(&context)
     .unwrap();
 }
 
@@ -73,14 +69,11 @@ fn assert_malformed(wasm: &str, expected: &wast2json::Error) {
     use wast2json::Error::*;
 
     let f = File::open(wasm).unwrap();
-    let mut context = ContextStack::default();
-    let result = decode_module(
-        &mut context,
+    let result = Module::decode(
         BufReader::new(f),
         &mut NoCustomSectionVisitor {},
         alloc::Global,
-    )
-    .with_context(&context);
+    );
 
     let error = match result {
         Err(error) => error.error,
