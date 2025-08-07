@@ -573,10 +573,10 @@ where
         // module. The best we can generically do is expect an EOF at a section
         // boundary.
         let id = decoder.read_bounded(context);
-        if let Err(Error::Storage(ref err)) = id {
-            if Storage::is_eof(err) {
-                break;
-            }
+        if let Err(Error::Storage(ref err)) = id
+            && Storage::is_eof(err)
+        {
+            break;
         }
         let id = id?;
 

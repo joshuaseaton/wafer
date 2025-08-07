@@ -232,7 +232,7 @@ pub(super) fn transcode_expression<A: Allocator + Clone, Storage: Stream>(
 
     let operand_transcoders = {
         let mut operand_transcoders: [TranscoderFn<A, Storage>; OPERAND_TYPE_VARIANT_COUNT] =
-            [|_, _, _| unreachable!(); OPERAND_TYPE_VARIANT_COUNT];
+            [|_, _, _| unreachable!(); _];
 
         macro_rules! set {
             ($operand_type:path, $type:ty) => {
@@ -298,7 +298,7 @@ fn transcode_bulk_op<A: Allocator + Clone, Storage: Stream>(
 
     let operand_transcoders = {
         let mut operand_transcoders: [TranscoderFn<A, Storage>; BULK_OPERAND_TYPE_VARIANT_COUNT] =
-            [|_, _, _| unreachable!(); BULK_OPERAND_TYPE_VARIANT_COUNT];
+            [|_, _, _| unreachable!(); _];
         macro_rules! set {
             ($operand_type:path, $type:ty) => {
                 operand_transcoders[$operand_type as usize] = <$type as Transcodable<A>>::transcode;
