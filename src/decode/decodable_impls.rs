@@ -161,23 +161,23 @@ impl_contextual!(ElementKind, ContextId::ElemKind);
 impl_contextual!(ElementSection<A: Allocator>, ContextId::ElemSec);
 impl_contextual!(ElementSegment<A: Allocator>, ContextId::Elem);
 impl_contextual!(ElementSegmentToken, ContextId::ElemToken);
-impl_contextual!(Export<A: Allocator>, ContextId::Export);
-impl_contextual!(ExportDescriptor, ContextId::ExportDesc);
-impl_contextual!(ExportDescriptorToken, ContextId::ExportDescToken);
 impl_contextual!(ExportSection<A: Allocator>, ContextId::ExportSec);
+impl_contextual!(ExportDescriptorToken, ContextId::ExportDescToken);
 impl_contextual!(Expression<A: Allocator>, ContextId::Expr);
 impl_contextual!(Function<A: Allocator>, ContextId::Func);
+impl_contextual!(FunctionExport<A: Allocator>, ContextId::Export);
 impl_contextual!(FunctionSection<A: Allocator>, ContextId::FuncSec);
 impl_contextual!(FunctionType<A: Allocator>, ContextId::FuncType);
 impl_contextual!(FunctionTypeToken, ContextId::FuncTypeToken);
 impl_contextual!(FuncIdx, ContextId::FuncIdx);
+impl_contextual!(FunctionImport<A: Allocator>, ContextId::Import);
 impl_contextual!(Global<A: Allocator>, ContextId::Global);
 impl_contextual!(GlobalIdx, ContextId::GlobalIdx);
 impl_contextual!(GlobalSection<A: Allocator>, ContextId::GlobalSec);
 impl_contextual!(GlobalType, ContextId::GlobalType);
 impl_contextual!(GlobalTypeMutability, ContextId::Mut);
-impl_contextual!(Import<A: Allocator>, ContextId::Import);
-impl_contextual!(ImportDescriptor, ContextId::ImportDesc);
+impl_contextual!(GlobalExport<A: Allocator>, ContextId::Export);
+impl_contextual!(GlobalImport<A: Allocator>, ContextId::Import);
 impl_contextual!(ImportDescriptorToken, ContextId::ImportDescToken);
 impl_contextual!(ImportSection<A: Allocator>, ContextId::ImportSec);
 impl_contextual!(LabelIdx, ContextId::LabelIdx);
@@ -188,6 +188,8 @@ impl_contextual!(Locals<A: Allocator>, ContextId::Locals);
 impl_contextual!(Magic, ContextId::Magic);
 impl_contextual!(MemArg, ContextId::MemArg);
 impl_contextual!(MemIdx, ContextId::MemIdx);
+impl_contextual!(MemoryExport<A: Allocator>, ContextId::Export);
+impl_contextual!(MemoryImport<A: Allocator>, ContextId::Import);
 impl_contextual!(MemorySection<A: Allocator>, ContextId::MemorySec);
 impl_contextual!(MemType, ContextId::MemType);
 impl_contextual!(Name<A: Allocator>, ContextId::Name);
@@ -197,7 +199,9 @@ impl_contextual!(ResultType<A: Allocator>, ContextId::ResultType);
 impl_contextual!(SectionId, ContextId::SectionId);
 impl_contextual!(SelectTOperands<A: Allocator>, ContextId::SelectTOperands);
 impl_contextual!(TableCopyOperands, ContextId::U32);
+impl_contextual!(TableExport<A: Allocator>, ContextId::Export);
 impl_contextual!(TableIdx, ContextId::TableIdx);
+impl_contextual!(TableImport<A: Allocator>, ContextId::Import);
 impl_contextual!(TableInitOperands, ContextId::U32);
 impl_contextual!(TableSection<A: Allocator>, ContextId::TableSec);
 impl_contextual!(TableType, ContextId::TableType);
@@ -246,10 +250,8 @@ impl_parsable_for_newtype!(TypeIdx);
 impl_parsable_for_newtype!(CodeSection<A>);
 impl_parsable_for_newtype!(DataSection<A>);
 impl_parsable_for_newtype!(ElementSection<A>);
-impl_parsable_for_newtype!(ExportSection<A>);
 impl_parsable_for_newtype!(FunctionSection<A>);
 impl_parsable_for_newtype!(GlobalSection<A>);
-impl_parsable_for_newtype!(ImportSection<A>);
 impl_parsable_for_newtype!(MemorySection<A>);
 impl_parsable_for_newtype!(ResultType<A>);
 impl_parsable_for_newtype!(TableSection<A>);
@@ -526,32 +528,68 @@ enum ImportDescriptorToken {
     Memory = 0x2,
     Global = 0x3,
 }
-impl BoundedDecodable for ImportDescriptor {
-    fn decode<Storage: Stream>(
-        decoder: &mut Parser<Storage>,
-        context: &mut ContextStack,
-    ) -> Result<Self, Error<Storage>> {
-        type Token = ImportDescriptorToken;
 
-        match decoder.read_bounded(context)? {
-            Token::Function => Ok(ImportDescriptor::Function(decoder.read_bounded(context)?)),
-            Token::Table => Ok(ImportDescriptor::Table(decoder.read_bounded(context)?)),
-            Token::Memory => Ok(ImportDescriptor::Memory(decoder.read_bounded(context)?)),
-            Token::Global => Ok(ImportDescriptor::Global(decoder.read_bounded(context)?)),
-        }
-    }
-}
-
-impl<A: Allocator + Clone> Decodable<A> for Import<A> {
+impl<A: Allocator + Clone> Decodable<A> for ImportSection<A> {
     fn decode<Storage: Stream>(
         decoder: &mut Parser<Storage>,
         context: &mut ContextStack,
         alloc: &A,
     ) -> Result<Self, Error<Storage>> {
+        let count: u32 = decoder.read_bounded(context)?;
+
+        let mut functions = Vec::new_in(alloc.clone());
+        let mut tables = Vec::new_in(alloc.clone());
+        let mut memories = Vec::new_in(alloc.clone());
+        let mut globals = Vec::new_in(alloc.clone());
+
+        for _ in 0..count {
+            let module: Name<A> = decoder.read(context, alloc)?;
+            let field: Name<A> = decoder.read(context, alloc)?;
+            decoder.with_context(context, ContextId::ImportDesc, |decoder, context| {
+                let desc: ImportDescriptorToken = decoder.read_bounded(context)?;
+                match desc {
+                    ImportDescriptorToken::Function => {
+                        functions.try_reserve_exact(1)?;
+                        functions.push(FunctionImport {
+                            module,
+                            field,
+                            function: decoder.read_bounded(context)?,
+                        });
+                    }
+                    ImportDescriptorToken::Table => {
+                        tables.try_reserve_exact(1)?;
+                        tables.push(TableImport {
+                            module,
+                            field,
+                            table: decoder.read_bounded(context)?,
+                        });
+                    }
+                    ImportDescriptorToken::Memory => {
+                        memories.try_reserve_exact(1)?;
+                        memories.push(MemoryImport {
+                            module,
+                            field,
+                            memory: decoder.read_bounded(context)?,
+                        });
+                    }
+                    ImportDescriptorToken::Global => {
+                        globals.try_reserve_exact(1)?;
+                        globals.push(GlobalImport {
+                            module,
+                            field,
+                            global: decoder.read_bounded(context)?,
+                        });
+                    }
+                }
+                Ok(())
+            })?;
+        }
+
         Ok(Self {
-            module: decoder.read(context, alloc)?,
-            field: decoder.read(context, alloc)?,
-            descriptor: decoder.read_bounded(context)?,
+            functions,
+            tables,
+            memories,
+            globals,
         })
     }
 }
@@ -577,31 +615,62 @@ enum ExportDescriptorToken {
     Memory = 0x2,
     Global = 0x3,
 }
-impl BoundedDecodable for ExportDescriptor {
-    fn decode<Storage: Stream>(
-        decoder: &mut Parser<Storage>,
-        context: &mut ContextStack,
-    ) -> Result<Self, Error<Storage>> {
-        type Token = ExportDescriptorToken;
 
-        match decoder.read_bounded(context)? {
-            Token::Function => Ok(ExportDescriptor::Function(decoder.read_bounded(context)?)),
-            Token::Table => Ok(ExportDescriptor::Table(decoder.read_bounded(context)?)),
-            Token::Memory => Ok(ExportDescriptor::Memory(decoder.read_bounded(context)?)),
-            Token::Global => Ok(ExportDescriptor::Global(decoder.read_bounded(context)?)),
-        }
-    }
-}
-
-impl<A: Allocator + Clone> Decodable<A> for Export<A> {
+impl<A: Allocator + Clone> Decodable<A> for ExportSection<A> {
     fn decode<Storage: Stream>(
         decoder: &mut Parser<Storage>,
         context: &mut ContextStack,
         alloc: &A,
     ) -> Result<Self, Error<Storage>> {
+        let count: u32 = decoder.read_bounded(context)?;
+
+        let mut functions = Vec::new_in(alloc.clone());
+        let mut tables = Vec::new_in(alloc.clone());
+        let mut memories = Vec::new_in(alloc.clone());
+        let mut globals = Vec::new_in(alloc.clone());
+        for _ in 0..count {
+            let field: Name<A> = decoder.read(context, alloc)?;
+            decoder.with_context(context, ContextId::ExportDesc, |decoder, context| {
+                let desc: ExportDescriptorToken = decoder.read_bounded(context)?;
+                match desc {
+                    ExportDescriptorToken::Function => {
+                        functions.try_reserve_exact(1)?;
+                        functions.push(FunctionExport {
+                            field,
+                            function: decoder.read_bounded(context)?,
+                        });
+                    }
+                    ExportDescriptorToken::Table => {
+                        tables.try_reserve_exact(1)?;
+                        tables.push(TableExport {
+                            field,
+                            table: decoder.read_bounded(context)?,
+                        });
+                    }
+                    ExportDescriptorToken::Memory => {
+                        memories.try_reserve_exact(1)?;
+                        memories.push(MemoryExport {
+                            field,
+                            memory: decoder.read_bounded(context)?,
+                        });
+                    }
+                    ExportDescriptorToken::Global => {
+                        globals.try_reserve_exact(1)?;
+                        globals.push(GlobalExport {
+                            field,
+                            global: decoder.read_bounded(context)?,
+                        });
+                    }
+                }
+                Ok(())
+            })?;
+        }
+
         Ok(Self {
-            field: decoder.read(context, alloc)?,
-            descriptor: decoder.read_bounded(context)?,
+            functions,
+            tables,
+            memories,
+            globals,
         })
     }
 }

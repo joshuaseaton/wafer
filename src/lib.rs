@@ -18,7 +18,7 @@ pub mod storage;
 pub mod types;
 
 use core_compat::alloc::Allocator;
-use decode::{ContextStack, CustomSectionVisitor, ErrorWithContext, decode_module};
+use decode::{ContextStack, CustomSectionVisitor, decode_module};
 use storage::Stream;
 use types::{
     CodeSection, DataSection, ElementSection, ExportSection, FunctionSection, GlobalSection,
