@@ -57,13 +57,15 @@ pub struct Module<A: Allocator + Clone> {
 }
 
 impl<A: Allocator + Clone> Module<A> {
+    /// Decodes the module from streaming storage, with a given allocator and a
+    /// custom section visitor.
     pub fn decode<Storage: Stream, CustomSecVisitor: CustomSectionVisitor<A>>(
         storage: Storage,
         customsec_visitor: &mut CustomSecVisitor,
         alloc: A,
-    ) -> Result<Self, ErrorWithContext<Storage>> {
+    ) -> Result<Self, decode::ErrorWithContext<Storage>> {
         let mut context = ContextStack::default();
         decode_module(storage, &mut context, customsec_visitor, alloc)
-            .map_err(|error| ErrorWithContext { error, context })
+            .map_err(|error| decode::ErrorWithContext { error, context })
     }
 }

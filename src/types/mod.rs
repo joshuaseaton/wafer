@@ -53,7 +53,7 @@ macro_rules! newtype {
     };
     (@impl [$($generic_params:tt)*], $qualified_type:ty, $underlying:ty) => {
         impl<$($generic_params)*> $qualified_type {
-            pub(crate) fn new(value: $underlying) -> Self {
+            pub fn new(value: $underlying) -> Self {
                 Self(value)
             }
         }
@@ -208,56 +208,56 @@ pub struct GlobalType {
 
 newtype!(
     /// An index into the type section.
-    #[derive(Clone, Copy, Debug)]
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
     pub struct TypeIdx(u32);
 );
 
 newtype!(
     /// An index into the function section.
-    #[derive(Clone, Copy, Debug)]
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
     pub struct FuncIdx(u32);
 );
 
 newtype!(
     /// An index into the table section.
-    #[derive(Clone, Copy, Debug)]
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
     pub struct TableIdx(u32);
 );
 
 newtype!(
     /// An index into the memory section.
-    #[derive(Clone, Copy, Debug)]
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
     pub struct MemIdx(u32);
 );
 
 newtype!(
     /// An index into the global section.
-    #[derive(Clone, Copy, Debug)]
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
     pub struct GlobalIdx(u32);
 );
 
 newtype!(
     /// An index into the element section.
-    #[derive(Clone, Copy, Debug)]
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
     pub struct ElemIdx(u32);
 );
 
 newtype!(
     /// An index into the data section.
-    #[derive(Clone, Copy, Debug)]
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
     pub struct DataIdx(u32);
 );
 
 newtype!(
     /// An index into a function's local variables.
-    #[derive(Clone, Copy, Debug)]
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
     pub struct LocalIdx(u32);
 );
 
 newtype!(
     /// An index referencing structured control instructions inside an
     /// instruction sequence.
-    #[derive(Clone, Copy, Debug)]
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
     pub struct LabelIdx(u32);
 );
 
@@ -350,7 +350,7 @@ newtype!(
 #[derive(Clone, Copy, Debug)]
 pub enum ImportDescriptor {
     /// Import a function with the given type index.
-    Function(u32),
+    Function(TypeIdx),
     /// Import a table with the given type.
     Table(TableType),
     /// Import a memory with the given type.
@@ -379,7 +379,7 @@ newtype!(
 newtype!(
     /// Section containing type indices for module-defined functions.
     #[derive(Clone, Debug)]
-    pub struct FunctionSection<A: Allocator>(Vec<u32, A>);
+    pub struct FunctionSection<A: Allocator>(Vec<TypeIdx, A>);
 );
 
 newtype!(
@@ -413,13 +413,13 @@ newtype!(
 #[derive(Clone, Copy, Debug)]
 pub enum ExportDescriptor {
     /// Export a function with the given index.
-    Function(u32),
+    Function(FuncIdx),
     /// Export a table with the given index.
-    Table(u32),
+    Table(TableIdx),
     /// Export a memory with the given index.
-    Memory(u32),
+    Memory(MemIdx),
     /// Export a global with the given index.
-    Global(u32),
+    Global(GlobalIdx),
 }
 
 /// An export declaration.

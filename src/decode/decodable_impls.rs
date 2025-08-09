@@ -410,7 +410,9 @@ impl BoundedDecodable for BlockType {
                     }
                 }
             }
-            n => Ok(BlockType::TypeIndex(u32::try_from(n).unwrap())),
+            n => Ok(BlockType::TypeIndex(TypeIdx::new(
+                u32::try_from(n).unwrap(),
+            ))),
         }
     }
 }

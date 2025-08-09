@@ -262,7 +262,7 @@ pub enum BlockType {
     /// Block produces a single result of the given type.
     Result(ValType),
     /// Block type is defined by function signature at given type index.
-    TypeIndex(u32),
+    TypeIndex(TypeIdx),
 }
 
 /// Operands for the `br_table` instruction.
