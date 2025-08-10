@@ -564,12 +564,12 @@ where
     let version: Version = decoder.read_bounded(context)?;
 
     let mut typesec = TypeSection::new(Vec::new_in(alloc.clone()));
-    let mut importsec = ImportSection::new(alloc.clone());
+    let mut importsec = ImportSection::new(Vec::new_in(alloc.clone()));
     let mut funcsec = FunctionSection::new(Vec::new_in(alloc.clone()));
     let mut tablesec = TableSection::new(Vec::new_in(alloc.clone()));
     let mut memsec = MemorySection::new(Vec::new_in(alloc.clone()));
     let mut globalsec = GlobalSection::new(Vec::new_in(alloc.clone()));
-    let mut exportsec = ExportSection::new(alloc.clone());
+    let mut exportsec = ExportSection::new(Vec::new_in(alloc.clone()));
     let mut startsec = None;
     let mut elemsec = ElementSection::new(Vec::new_in(alloc.clone()));
     let mut datacountsec = None;

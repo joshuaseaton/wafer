@@ -346,73 +346,36 @@ newtype!(
     pub struct TypeSection<A: Allocator>(Vec<FunctionType<A>, A>);
 );
 
-/// An import declaration for a function.
+/// Import descriptor types.
+#[derive(Clone, Copy, Debug)]
+pub enum ImportDescriptor {
+    /// Import a function with the given type index.
+    Function(TypeIdx),
+    /// Import a table with the given type.
+    Table(TableType),
+    /// Import a memory with the given type.
+    Memory(MemType),
+    /// Import a global with the given type.
+    Global(GlobalType),
+}
+
+/// An import declaration.
 #[derive(Debug)]
-pub struct FunctionImport<A: Allocator> {
+pub struct Import<A: Allocator> {
     /// Name of the module to import from.
     pub module: Name<A>,
-    /// Name of the imported function.
+    /// Name of the imported entity.
     pub field: Name<A>,
-    /// Type index of the imported function.
-    pub function: TypeIdx,
+    /// Type of the imported entity.
+    pub descriptor: ImportDescriptor,
 }
 
-/// An import declaration for a table.
-#[derive(Debug)]
-pub struct TableImport<A: Allocator> {
-    /// Name of the module to import from.
-    pub module: Name<A>,
-    /// Name of the imported table.
-    pub field: Name<A>,
-    /// Type of the imported table.
-    pub table: TableType,
-}
+newtype!(
+    /// Section containing import declarations.
+    #[derive(Debug)]
+    pub struct ImportSection<A: Allocator>(Vec<Import<A>, A>);
+);
 
-/// An import declaration for a memory.
-#[derive(Debug)]
-pub struct MemoryImport<A: Allocator> {
-    /// Name of the module to import from.
-    pub module: Name<A>,
-    /// Name of the imported memory.
-    pub field: Name<A>,
-    /// Type of the imported memory.
-    pub memory: MemType,
-}
-
-/// An import declaration for a global.
-#[derive(Debug)]
-pub struct GlobalImport<A: Allocator> {
-    /// Name of the module to import from.
-    pub module: Name<A>,
-    /// Name of the imported global.
-    pub field: Name<A>,
-    /// Type of the imported global.
-    pub global: GlobalType,
-}
-
-/// Section containing import declarations organized by type.
-#[derive(Debug)]
-pub struct ImportSection<A: Allocator> {
-    /// Function imports.
-    pub functions: Vec<FunctionImport<A>, A>,
-    /// Table imports.
-    pub tables: Vec<TableImport<A>, A>,
-    /// Memory imports.
-    pub memories: Vec<MemoryImport<A>, A>,
-    /// Global imports.
-    pub globals: Vec<GlobalImport<A>, A>,
-}
-
-impl<A: Allocator + Clone> ImportSection<A> {
-    pub fn new(alloc: A) -> Self {
-        Self {
-            functions: Vec::new_in(alloc.clone()),
-            tables: Vec::new_in(alloc.clone()),
-            memories: Vec::new_in(alloc.clone()),
-            globals: Vec::new_in(alloc),
-        }
-    }
-}
 
 newtype!(
     /// Section containing type indices for module-defined functions.
@@ -447,69 +410,34 @@ newtype!(
     pub struct GlobalSection<A: Allocator>(Vec<Global<A>, A>);
 );
 
-/// An export declaration for a function.
+/// Describes what kind of entity is being exported.
+#[derive(Clone, Copy, Debug)]
+pub enum ExportDescriptor {
+    /// Export a function with the given index.
+    Function(FuncIdx),
+    /// Export a table with the given index.
+    Table(TableIdx),
+    /// Export a memory with the given index.
+    Memory(MemIdx),
+    /// Export a global with the given index.
+    Global(GlobalIdx),
+}
+
+/// An export declaration.
 #[derive(Debug)]
-pub struct FunctionExport<A: Allocator> {
-    /// Name of the exported function.
+pub struct Export<A: Allocator> {
+    /// Name of the exported entity.
     pub field: Name<A>,
-
-    /// Index of the exported function.
-    pub function: FuncIdx,
+    /// Type and index of the exported entity.
+    pub descriptor: ExportDescriptor,
 }
 
-/// An export declaration for a table.
-#[derive(Debug)]
-pub struct TableExport<A: Allocator> {
-    /// Name of the exported table.
-    pub field: Name<A>,
+newtype!(
+    /// Section containing export declarations.
+    #[derive(Debug)]
+    pub struct ExportSection<A: Allocator>(Vec<Export<A>, A>);
+);
 
-    /// Index of the exported table.
-    pub table: TableIdx,
-}
-
-/// An export declaration for a memory.
-#[derive(Debug)]
-pub struct MemoryExport<A: Allocator> {
-    /// Name of the exported memory.
-    pub field: Name<A>,
-
-    /// Index of the exported memory.
-    pub memory: MemIdx,
-}
-
-/// An export declaration for a global.
-#[derive(Debug)]
-pub struct GlobalExport<A: Allocator> {
-    /// Name of the exported global.
-    pub field: Name<A>,
-
-    /// Index of the exported global.
-    pub global: GlobalIdx,
-}
-
-/// Section containing export declarations organized by type.
-#[derive(Debug)]
-pub struct ExportSection<A: Allocator> {
-    /// Function exports.
-    pub functions: Vec<FunctionExport<A>, A>,
-    /// Table exports.
-    pub tables: Vec<TableExport<A>, A>,
-    /// Memory exports.
-    pub memories: Vec<MemoryExport<A>, A>,
-    /// Global exports.
-    pub globals: Vec<GlobalExport<A>, A>,
-}
-
-impl<A: Allocator + Clone> ExportSection<A> {
-    pub fn new(alloc: A) -> Self {
-        Self {
-            functions: Vec::new_in(alloc.clone()),
-            tables: Vec::new_in(alloc.clone()),
-            memories: Vec::new_in(alloc.clone()),
-            globals: Vec::new_in(alloc),
-        }
-    }
-}
 
 newtype!(
     /// Holds the index of the start function.
