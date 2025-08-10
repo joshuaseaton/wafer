@@ -31,29 +31,29 @@ pub struct Module<A: Allocator + Clone> {
     /// Module version.
     pub version: Version,
     /// Function type declarations.
-    pub typesec: Option<TypeSection<A>>,
+    pub typesec: TypeSection<A>,
     /// Import declarations.
-    pub importsec: Option<ImportSection<A>>,
+    pub importsec: ImportSection<A>,
     /// Function type indices.
-    pub funcsec: Option<FunctionSection<A>>,
+    pub funcsec: FunctionSection<A>,
     /// Table declarations.
-    pub tablesec: Option<TableSection<A>>,
+    pub tablesec: TableSection<A>,
     /// Memory declarations.
-    pub memsec: Option<MemorySection<A>>,
+    pub memsec: MemorySection<A>,
     /// Global variable declarations.
-    pub globalsec: Option<GlobalSection<A>>,
+    pub globalsec: GlobalSection<A>,
     /// Export declarations.
-    pub exportsec: Option<ExportSection<A>>,
+    pub exportsec: ExportSection<A>,
     /// Start function index.
     pub startsec: Option<u32>,
     /// Element segments.
-    pub elemsec: Option<ElementSection<A>>,
+    pub elemsec: ElementSection<A>,
     /// Data segment count (for bulk memory operations).
     pub datacountsec: Option<u32>,
     /// Function bodies.
-    pub codesec: Option<CodeSection<A>>,
+    pub codesec: CodeSection<A>,
     /// Data segments.
-    pub datasec: Option<DataSection<A>>,
+    pub datasec: DataSection<A>,
 }
 
 impl<A: Allocator + Clone> Module<A> {

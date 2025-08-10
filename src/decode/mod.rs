@@ -23,7 +23,11 @@ use crate::core_compat::alloc::{Allocator, collections::TryReserveError};
 use crate::core_compat::boxed::Box;
 use crate::core_compat::vec::Vec;
 use crate::storage::Stream;
-use crate::types::{CustomSection, Name, SectionId, Version};
+use crate::types::{
+    CodeSection, CustomSection, DataSection, ElementSection, ExportSection, FunctionSection,
+    GlobalSection, ImportSection, MemorySection, Name, SectionId, TableSection, TypeSection,
+    Version,
+};
 
 // The maximum parsing depth of this implementation (which is also pretty much
 // the lower bound implicitly suggested by the spec).
@@ -553,18 +557,18 @@ where
     decoder.read_bounded::<Magic>(context)?;
     let version: Version = decoder.read_bounded(context)?;
 
-    let mut typesec = None;
-    let mut importsec = None;
-    let mut funcsec = None;
-    let mut tablesec = None;
-    let mut memsec = None;
-    let mut globalsec = None;
-    let mut exportsec = None;
+    let mut typesec = TypeSection::new(Vec::new_in(alloc.clone()));
+    let mut importsec = ImportSection::new(alloc.clone());
+    let mut funcsec = FunctionSection::new(Vec::new_in(alloc.clone()));
+    let mut tablesec = TableSection::new(Vec::new_in(alloc.clone()));
+    let mut memsec = MemorySection::new(Vec::new_in(alloc.clone()));
+    let mut globalsec = GlobalSection::new(Vec::new_in(alloc.clone()));
+    let mut exportsec = ExportSection::new(alloc.clone());
     let mut startsec = None;
-    let mut elemsec = None;
+    let mut elemsec = ElementSection::new(Vec::new_in(alloc.clone()));
     let mut datacountsec = None;
-    let mut codesec = None;
-    let mut datasec = None;
+    let mut codesec = CodeSection::new(Vec::new_in(alloc.clone()));
+    let mut datasec = DataSection::new(Vec::new_in(alloc.clone()));
 
     // The last section ID seen.
     let mut last_id = None;
@@ -619,17 +623,17 @@ where
                     decoder.skip_bytes(context, len)?;
                 }
             }
-            SectionId::Type => typesec = Some(decoder.read(context, &alloc)?),
-            SectionId::Import => importsec = Some(decoder.read(context, &alloc)?),
-            SectionId::Function => funcsec = Some(decoder.read(context, &alloc)?),
-            SectionId::Table => tablesec = Some(decoder.read(context, &alloc)?),
-            SectionId::Memory => memsec = Some(decoder.read(context, &alloc)?),
-            SectionId::Global => globalsec = Some(decoder.read(context, &alloc)?),
-            SectionId::Export => exportsec = Some(decoder.read(context, &alloc)?),
+            SectionId::Type => typesec = decoder.read(context, &alloc)?,
+            SectionId::Import => importsec = decoder.read(context, &alloc)?,
+            SectionId::Function => funcsec = decoder.read(context, &alloc)?,
+            SectionId::Table => tablesec = decoder.read(context, &alloc)?,
+            SectionId::Memory => memsec = decoder.read(context, &alloc)?,
+            SectionId::Global => globalsec = decoder.read(context, &alloc)?,
+            SectionId::Export => exportsec = decoder.read(context, &alloc)?,
             SectionId::Start => startsec = Some(decoder.read(context, &alloc)?),
-            SectionId::Element => elemsec = Some(decoder.read(context, &alloc)?),
-            SectionId::Code => codesec = Some(decoder.read(context, &alloc)?),
-            SectionId::Data => datasec = Some(decoder.read(context, &alloc)?),
+            SectionId::Element => elemsec = decoder.read(context, &alloc)?,
+            SectionId::Code => codesec = decoder.read(context, &alloc)?,
+            SectionId::Data => datasec = decoder.read(context, &alloc)?,
             SectionId::DataCount => datacountsec = Some(decoder.read(context, &alloc)?),
         }
         let actual_section_len = decoder.offset() - offset_start;

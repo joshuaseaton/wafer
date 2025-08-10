@@ -403,6 +403,17 @@ pub struct ImportSection<A: Allocator> {
     pub globals: Vec<GlobalImport<A>, A>,
 }
 
+impl<A: Allocator + Clone> ImportSection<A> {
+    pub fn new(alloc: A) -> Self {
+        Self {
+            functions: Vec::new_in(alloc.clone()),
+            tables: Vec::new_in(alloc.clone()),
+            memories: Vec::new_in(alloc.clone()),
+            globals: Vec::new_in(alloc),
+        }
+    }
+}
+
 newtype!(
     /// Section containing type indices for module-defined functions.
     #[derive(Clone, Debug)]
@@ -487,6 +498,17 @@ pub struct ExportSection<A: Allocator> {
     pub memories: Vec<MemoryExport<A>, A>,
     /// Global exports.
     pub globals: Vec<GlobalExport<A>, A>,
+}
+
+impl<A: Allocator + Clone> ExportSection<A> {
+    pub fn new(alloc: A) -> Self {
+        Self {
+            functions: Vec::new_in(alloc.clone()),
+            tables: Vec::new_in(alloc.clone()),
+            memories: Vec::new_in(alloc.clone()),
+            globals: Vec::new_in(alloc),
+        }
+    }
 }
 
 // [wasm]: 5.5.12 Element Section
