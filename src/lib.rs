@@ -17,7 +17,8 @@ pub mod decode;
 pub mod storage;
 pub mod types;
 
-use core_compat::alloc::Allocator;
+use core::fmt;
+
 use decode::{ContextStack, CustomSectionVisitor, decode_module};
 use storage::Stream;
 use types::{
@@ -26,8 +27,14 @@ use types::{
     for_each_bulk_opcode, for_each_opcode,
 };
 
+/// A convenience trait that captures the required allocation-related trait
+/// bounds.
+pub trait Allocator: core_compat::alloc::Allocator + fmt::Debug + Clone {}
+
+impl<A> Allocator for A where A: core_compat::alloc::Allocator + fmt::Debug + Clone {}
+
 /// A WebAssembly module.
-pub struct Module<A: Allocator + Clone> {
+pub struct Module<A: Allocator> {
     /// Module version.
     pub version: Version,
     /// Function type declarations.
@@ -56,7 +63,7 @@ pub struct Module<A: Allocator + Clone> {
     pub datasec: DataSection<A>,
 }
 
-impl<A: Allocator + Clone> Module<A> {
+impl<A: Allocator> Module<A> {
     /// Decodes the module from streaming storage, with a given allocator and a
     /// custom section visitor.
     pub fn decode<Storage: Stream, CustomSecVisitor: CustomSectionVisitor<A>>(

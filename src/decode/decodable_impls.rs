@@ -10,7 +10,7 @@ use core::ops;
 
 use num_enum::TryFromPrimitive;
 
-use crate::core_compat::alloc::Allocator;
+use crate::Allocator;
 use crate::core_compat::boxed::Box;
 use crate::core_compat::vec::Vec;
 use crate::storage::Stream;
@@ -96,7 +96,7 @@ macro_rules! impl_parsable_for_le_u32_enum {
 
 macro_rules! impl_parsable_for_newtype {
     ($type:ident<A>) => {
-        impl<A: Allocator + Clone> Decodable<A> for $type<A> {
+        impl<A: Allocator> Decodable<A> for $type<A> {
             fn decode<Storage: Stream>(
                 decoder: &mut Parser<Storage>,
                 context: &mut ContextStack,
@@ -125,7 +125,7 @@ macro_rules! impl_parsable_for_newtype {
 impl<T, A> Decodable<A> for Vec<T, A>
 where
     T: Decodable<A> + Contextual,
-    A: Allocator + Clone,
+    A: Allocator,
 {
     fn decode<Storage: Stream>(
         decoder: &mut Parser<Storage>,
@@ -363,7 +363,7 @@ impl BoundedDecodable for TableInitOperands {
     }
 }
 
-impl<A: Allocator + Clone> Decodable<A> for BrTableOperands<A> {
+impl<A: Allocator> Decodable<A> for BrTableOperands<A> {
     fn decode<Storage: Stream>(
         decoder: &mut Parser<Storage>,
         context: &mut ContextStack,
@@ -376,7 +376,7 @@ impl<A: Allocator + Clone> Decodable<A> for BrTableOperands<A> {
     }
 }
 
-impl<A: Allocator + Clone> Decodable<A> for SelectTOperands<A> {
+impl<A: Allocator> Decodable<A> for SelectTOperands<A> {
     fn decode<Storage: Stream>(
         decoder: &mut Parser<Storage>,
         context: &mut ContextStack,
@@ -419,7 +419,7 @@ impl BoundedDecodable for BlockType {
     }
 }
 
-impl<A: Allocator + Clone> Decodable<A> for Name<A> {
+impl<A: Allocator> Decodable<A> for Name<A> {
     fn decode<Storage: Stream>(
         decoder: &mut Parser<Storage>,
         context: &mut ContextStack,
@@ -450,7 +450,7 @@ enum FunctionTypeToken {
     Value = 0x60,
 }
 
-impl<A: Allocator + Clone> Decodable<A> for FunctionType<A> {
+impl<A: Allocator> Decodable<A> for FunctionType<A> {
     fn decode<Storage: Stream>(
         decoder: &mut Parser<Storage>,
         context: &mut ContextStack,
@@ -510,7 +510,7 @@ impl BoundedDecodable for GlobalType {
     }
 }
 
-impl<A: Allocator + Clone> Decodable<A> for Expression<A> {
+impl<A: Allocator> Decodable<A> for Expression<A> {
     fn decode<Storage: Stream>(
         decoder: &mut Parser<Storage>,
         context: &mut ContextStack,
@@ -544,7 +544,7 @@ impl BoundedDecodable for ImportDescriptor {
     }
 }
 
-impl<A: Allocator + Clone> Decodable<A> for Import<A> {
+impl<A: Allocator> Decodable<A> for Import<A> {
     fn decode<Storage: Stream>(
         decoder: &mut Parser<Storage>,
         context: &mut ContextStack,
@@ -558,7 +558,7 @@ impl<A: Allocator + Clone> Decodable<A> for Import<A> {
     }
 }
 
-impl<A: Allocator + Clone> Decodable<A> for Global<A> {
+impl<A: Allocator> Decodable<A> for Global<A> {
     fn decode<Storage: Stream>(
         decoder: &mut Parser<Storage>,
         context: &mut ContextStack,
@@ -595,7 +595,7 @@ impl BoundedDecodable for ExportDescriptor {
     }
 }
 
-impl<A: Allocator + Clone> Decodable<A> for Export<A> {
+impl<A: Allocator> Decodable<A> for Export<A> {
     fn decode<Storage: Stream>(
         decoder: &mut Parser<Storage>,
         context: &mut ContextStack,
@@ -608,7 +608,7 @@ impl<A: Allocator + Clone> Decodable<A> for Export<A> {
     }
 }
 
-impl<A: Allocator + Clone> Decodable<A> for ElementSegment<A> {
+impl<A: Allocator> Decodable<A> for ElementSegment<A> {
     fn decode<Storage: Stream>(
         decoder: &mut Parser<Storage>,
         context: &mut ContextStack,
@@ -733,7 +733,7 @@ impl From<ElementKind> for RefType {
     }
 }
 
-impl<A: Allocator + Clone> Decodable<A> for Locals<A> {
+impl<A: Allocator> Decodable<A> for Locals<A> {
     fn decode<Storage: Stream>(
         decoder: &mut Parser<Storage>,
         context: &mut ContextStack,
@@ -768,7 +768,7 @@ impl From<ValType> for Local {
     }
 }
 
-impl<A: Allocator + Clone> Decodable<A> for Function<A> {
+impl<A: Allocator> Decodable<A> for Function<A> {
     fn decode<Storage: Stream>(
         decoder: &mut Parser<Storage>,
         context: &mut ContextStack,
@@ -797,7 +797,7 @@ enum DataSegmentToken {
     ActiveWithMemIdx = 2,
 }
 
-impl<A: Allocator + Clone> Decodable<A> for DataSegment<A> {
+impl<A: Allocator> Decodable<A> for DataSegment<A> {
     fn decode<Storage: Stream>(
         decoder: &mut Parser<Storage>,
         context: &mut ContextStack,

@@ -18,8 +18,7 @@ use num_enum::TryFromPrimitive;
 
 use leb128::Leb128;
 
-use crate::Module;
-use crate::core_compat::alloc::{Allocator, collections::TryReserveError};
+use crate::core_compat::alloc::collections::TryReserveError;
 use crate::core_compat::boxed::Box;
 use crate::core_compat::vec::Vec;
 use crate::storage::Stream;
@@ -28,6 +27,7 @@ use crate::types::{
     GlobalSection, ImportSection, MemorySection, Name, SectionId, TableSection, TypeSection,
     Version,
 };
+use crate::{Allocator, Module};
 
 // The maximum parsing depth of this implementation (which is also pretty much
 // the lower bound implicitly suggested by the spec).
@@ -453,7 +453,7 @@ impl<Storage: Stream> Parser<Storage> {
         })
     }
 
-    fn read_bytes<A: Allocator + Clone>(
+    fn read_bytes<A: Allocator>(
         &mut self,
         context: &mut ContextStack,
         count: usize,
@@ -470,7 +470,7 @@ impl<Storage: Stream> Parser<Storage> {
         Ok(buf.into_boxed_slice())
     }
 
-    fn read<A: Allocator + Clone, T: Decodable<A> + Contextual>(
+    fn read<A: Allocator, T: Decodable<A> + Contextual>(
         &mut self,
         context: &mut ContextStack,
         alloc: &A,
@@ -493,7 +493,7 @@ impl<Storage: Stream> Parser<Storage> {
 // Types that can be decoded from a storage stream, possibly with allocation.
 trait Decodable<A>: Sized
 where
-    A: Allocator + Clone,
+    A: Allocator,
 {
     /// Parse this type from the binary stream.
     fn decode<Storage: Stream>(
@@ -511,7 +511,7 @@ trait BoundedDecodable: Sized + Copy {
     ) -> Result<Self, Error<Storage>>;
 }
 
-impl<Bounded: BoundedDecodable, A: Allocator + Clone> Decodable<A> for Bounded {
+impl<Bounded: BoundedDecodable, A: Allocator> Decodable<A> for Bounded {
     fn decode<Storage: Stream>(
         decoder: &mut Parser<Storage>,
         context: &mut ContextStack,
@@ -557,7 +557,7 @@ pub(crate) fn decode_module<Storage, CustomSecVisitor, A>(
 where
     Storage: Stream,
     CustomSecVisitor: CustomSectionVisitor<A>,
-    A: Allocator + Clone,
+    A: Allocator,
 {
     let mut decoder = Parser::new(storage);
     decoder.read_bounded::<Magic>(context)?;

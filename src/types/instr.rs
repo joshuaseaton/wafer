@@ -11,7 +11,7 @@
 
 use num_enum::TryFromPrimitive;
 
-use crate::core_compat::alloc::Allocator;
+use crate::Allocator;
 use crate::core_compat::vec::Vec;
 use crate::{for_each_bulk_opcode, for_each_opcode};
 

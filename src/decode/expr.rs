@@ -9,8 +9,10 @@
 
 use core::ptr;
 
+use crate::Allocator;
+use crate::core_compat;
 use crate::core_compat::alloc::collections::TryReserveError;
-use crate::core_compat::alloc::{AllocError, Allocator, Layout};
+use crate::core_compat::alloc::{AllocError, Layout};
 use crate::core_compat::boxed::Box;
 use crate::core_compat::vec::Vec;
 use crate::decode::BoundedDecodable;
@@ -37,7 +39,7 @@ const MAX_NATURAL_ALIGNMENT: usize = 8;
 struct AlignedAllocator<A: Allocator>(A);
 
 // Safety: Soundness is deferred to the wrapped allocator.
-unsafe impl<A: Allocator> Allocator for AlignedAllocator<A> {
+unsafe impl<A: Allocator> core_compat::alloc::Allocator for AlignedAllocator<A> {
     fn allocate(&self, layout: Layout) -> Result<ptr::NonNull<[u8]>, AllocError> {
         let layout = layout.align_to(MAX_NATURAL_ALIGNMENT).unwrap();
         self.0.allocate(layout)
@@ -76,7 +78,7 @@ unsafe impl<A: Allocator> Allocator for AlignedAllocator<A> {
 
 // A type that may appear within a decoded Expression, re-encoded by
 // 'transcoding' directly from the decoder to the builder.
-trait Transcodable<A: Allocator + Clone>: Decodable<A> + Contextual {
+trait Transcodable<A: Allocator>: Decodable<A> + Contextual {
     fn write_to(self, builder: &mut ExpressionBuilder<A>) -> Result<(), TryReserveError>;
 
     fn transcode<Storage: Stream>(
@@ -89,7 +91,7 @@ trait Transcodable<A: Allocator + Clone>: Decodable<A> + Contextual {
 impl<T, A> Transcodable<A> for T
 where
     T: BoundedDecodable + Contextual,
-    A: Allocator + Clone,
+    A: Allocator,
 {
     fn write_to(self, builder: &mut ExpressionBuilder<A>) -> Result<(), TryReserveError> {
         let data = &mut builder.data;
@@ -128,7 +130,7 @@ where
 impl<T, A> Transcodable<A> for Vec<T, A>
 where
     T: BoundedDecodable + Contextual,
-    A: Allocator + Clone,
+    A: Allocator,
     Vec<T, A>: Contextual,
 {
     fn write_to(self, builder: &mut ExpressionBuilder<A>) -> Result<(), TryReserveError> {
@@ -154,7 +156,7 @@ where
     }
 }
 
-impl<A: Allocator + Clone> Transcodable<A> for BrTableOperands<A> {
+impl<A: Allocator> Transcodable<A> for BrTableOperands<A> {
     fn write_to(self, builder: &mut ExpressionBuilder<A>) -> Result<(), TryReserveError> {
         self.labels.write_to(builder)?;
         builder.write(self.default)
@@ -172,7 +174,7 @@ impl<A: Allocator + Clone> Transcodable<A> for BrTableOperands<A> {
     }
 }
 
-impl<A: Allocator + Clone> Transcodable<A> for SelectTOperands<A> {
+impl<A: Allocator> Transcodable<A> for SelectTOperands<A> {
     fn write_to(self, builder: &mut ExpressionBuilder<A>) -> Result<(), TryReserveError> {
         builder.write(self.types)
     }
@@ -188,11 +190,11 @@ impl<A: Allocator + Clone> Transcodable<A> for SelectTOperands<A> {
 
 // A simple builder for creating
 #[derive(Debug)]
-struct ExpressionBuilder<A: Allocator + Clone> {
+struct ExpressionBuilder<A: Allocator> {
     data: Vec<u8, AlignedAllocator<A>>,
 }
 
-impl<A: Allocator + Clone> ExpressionBuilder<A> {
+impl<A: Allocator> ExpressionBuilder<A> {
     fn new(alloc: A) -> Self {
         let aligned_alloc = AlignedAllocator(alloc);
         Self {
@@ -220,7 +222,7 @@ type TranscoderFn<A, Storage> = fn(
     &mut ExpressionBuilder<A>,
 ) -> Result<(), Error<Storage>>;
 
-pub(super) fn transcode_expression<A: Allocator + Clone, Storage: Stream>(
+pub(super) fn transcode_expression<A: Allocator, Storage: Stream>(
     decoder: &mut Parser<Storage>,
     context: &mut ContextStack,
     alloc: &A,
@@ -286,7 +288,7 @@ pub(super) fn transcode_expression<A: Allocator + Clone, Storage: Stream>(
     Ok(builder.finalize())
 }
 
-fn transcode_bulk_op<A: Allocator + Clone, Storage: Stream>(
+fn transcode_bulk_op<A: Allocator, Storage: Stream>(
     decoder: &mut Parser<Storage>,
     context: &mut ContextStack,
     builder: &mut ExpressionBuilder<A>,
@@ -330,7 +332,7 @@ fn transcode_bulk_op<A: Allocator + Clone, Storage: Stream>(
     Ok(())
 }
 
-fn transcode_vector_op<A: Allocator + Clone, Storage: Stream>(
+fn transcode_vector_op<A: Allocator, Storage: Stream>(
     _decoder: &mut Parser<Storage>,
     _context: &mut ContextStack,
     _builder: &mut ExpressionBuilder<A>,

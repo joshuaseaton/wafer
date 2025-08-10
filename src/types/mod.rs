@@ -17,7 +17,7 @@ use core::cmp;
 
 use num_enum::TryFromPrimitive;
 
-use crate::core_compat::alloc::Allocator;
+use crate::Allocator;
 use crate::core_compat::boxed::Box;
 use crate::core_compat::vec::Vec;
 
@@ -376,7 +376,6 @@ newtype!(
     pub struct ImportSection<A: Allocator>(Vec<Import<A>, A>);
 );
 
-
 newtype!(
     /// Section containing type indices for module-defined functions.
     #[derive(Clone, Debug)]
@@ -437,7 +436,6 @@ newtype!(
     #[derive(Debug)]
     pub struct ExportSection<A: Allocator>(Vec<Export<A>, A>);
 );
-
 
 newtype!(
     /// Holds the index of the start function.
