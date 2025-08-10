@@ -22,8 +22,8 @@ use decode::{ContextStack, CustomSectionVisitor, decode_module};
 use storage::Stream;
 use types::{
     CodeSection, DataSection, ElementSection, ExportSection, FunctionSection, GlobalSection,
-    ImportSection, MemorySection, TableSection, TypeSection, Version, for_each_bulk_opcode,
-    for_each_opcode,
+    ImportSection, MemorySection, StartSection, TableSection, TypeSection, Version,
+    for_each_bulk_opcode, for_each_opcode,
 };
 
 /// A WebAssembly module.
@@ -45,7 +45,7 @@ pub struct Module<A: Allocator + Clone> {
     /// Export declarations.
     pub exportsec: ExportSection<A>,
     /// Start function index.
-    pub startsec: Option<u32>,
+    pub startsec: Option<StartSection>,
     /// Element segments.
     pub elemsec: ElementSection<A>,
     /// Data segment count (for bulk memory operations).

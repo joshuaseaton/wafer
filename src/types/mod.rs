@@ -511,6 +511,12 @@ impl<A: Allocator + Clone> ExportSection<A> {
     }
 }
 
+newtype!(
+    /// Holds the index of the start function.
+    #[derive(Clone, Copy, Debug)]
+    pub struct StartSection(FuncIdx);
+);
+
 // [wasm]: 5.5.12 Element Section
 
 newtype!(
