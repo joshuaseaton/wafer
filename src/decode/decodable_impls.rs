@@ -17,8 +17,8 @@ use crate::storage::Stream;
 use crate::types::*;
 
 use super::{
-    BoundedDecodable, ContextId, ContextStack, Contextual, Decodable, Error, InvalidLength, Magic,
-    Parser, transcode_expression,
+    BoundedDecodable, ContextId, ContextStack, Contextual, Decodable, Error, Magic, Parser,
+    transcode_expression,
 };
 
 /// Maximum number of local variables per function. It serves to give a
@@ -849,10 +849,10 @@ impl<A: Allocator + Clone> Decodable<A> for Function<A> {
         let code = decoder.read(context, alloc)?;
         let actual_size = decoder.offset() - offset_start;
         if expected_size != actual_size {
-            return Err(Error::InvalidFunctionLength(InvalidLength {
+            return Err(Error::InvalidFunctionLength {
                 expected: expected_size as u32,
                 actual: actual_size as u32,
-            }));
+            });
         }
         Ok(Self { locals, code })
     }

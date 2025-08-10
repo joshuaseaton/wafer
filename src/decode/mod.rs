@@ -203,14 +203,14 @@ trait Contextual {
     const ID: ContextId;
 }
 
-/// A frame of parsing context.
+// A frame of parsing context.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct ContextFrame {
-    /// A description of what is being parsed.
-    pub context: &'static str,
+struct ContextFrame {
+    // A description of what is being parsed.
+    context: &'static str,
 
-    /// Byte offset in the stream where this context was entered.
-    pub offset: usize,
+    // Byte offset in the stream where this context was entered.
+    offset: usize,
 }
 
 /// Stack for tracking parsing context during error reporting.
@@ -240,9 +240,9 @@ impl ContextStack {
         self.depth -= 1;
     }
 
-    /// Returns an iterator over frames in "pushed" order (outermost to
-    /// innermost).
-    pub(crate) fn iter(&self) -> impl Iterator<Item = ContextFrame> + '_ {
+    // Returns an iterator over frames in "pushed" order (outermost to
+    // innermost).
+    fn iter(&self) -> impl Iterator<Item = ContextFrame> + '_ {
         self.offsets
             .iter()
             .zip(&self.ids)
@@ -276,13 +276,6 @@ impl<Storage: Stream> fmt::Debug for ErrorWithContext<Storage> {
     }
 }
 
-/// A mismatch between expected and actual lengths during parsing.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct InvalidLength {
-    pub expected: u32,
-    pub actual: u32,
-}
-
 /// Represents errors that can arise during module parsing.
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub enum Error<Storage: Stream> {
@@ -291,7 +284,10 @@ pub enum Error<Storage: Stream> {
     /// A given section appears more than once in the module.
     DuplicateSection(SectionId),
     /// Parser context stack exceeded maximum depth to prevent stack overflow.
-    ExcessiveParsingDepth(ContextFrame),
+    ExcessiveParsingDepth {
+        context: &'static str,
+        offset: usize,
+    },
     /// Invalid bulk memory/table operation opcode encountered.
     InvalidBulkOpcode(u32),
     /// Invalid data segment token encountered.
@@ -299,13 +295,17 @@ pub enum Error<Storage: Stream> {
     /// Invalid element segment token encountered.
     InvalidElementToken(u32),
     /// Function body length doesn't match the declared length.
-    InvalidFunctionLength(InvalidLength),
+    InvalidFunctionLength { expected: u32, actual: u32 },
     /// Invalid LEB128 encoding encountered.
     InvalidLeb128,
     /// Invalid WebAssembly magic number.
     InvalidMagic(u32),
     /// Section length doesn't match the declared length.
-    InvalidSectionLength(SectionId, InvalidLength),
+    InvalidSectionLength {
+        id: SectionId,
+        expected: u32,
+        actual: u32,
+    },
     /// Invalid byte token encountered during parsing.
     InvalidToken(u8),
     /// Invalid UTF-8 encoding in a name field.
@@ -313,7 +313,7 @@ pub enum Error<Storage: Stream> {
     /// Invalid value type encoding encountered.
     InvalidValType(u8),
     /// (Non-custom) sections appear in the wrong order.
-    OutOfOrderSection(SectionId, SectionId),
+    OutOfOrderSection { before: SectionId, after: SectionId },
     /// Error from the underlying storage.
     Storage(Storage::Error),
     /// Function declares too many local variables (exceeding an
@@ -328,27 +328,31 @@ impl<Storage: Stream> fmt::Debug for Error<Storage> {
         match self {
             Error::AllocError => write!(f, "allocation failure"),
             Error::DuplicateSection(id) => write!(f, "duplicate of section ({id:?})"),
-            Error::ExcessiveParsingDepth(ContextFrame { context, offset }) => {
+            Error::ExcessiveParsingDepth { context, offset } => {
                 write!(f, "unexpected frame at {offset:#x}: {context}")
             }
             Error::InvalidBulkOpcode(op) => write!(f, "invalid bulk opcode ({op:#x})"),
             Error::InvalidDataToken(token) => write!(f, "invalid data token ({token:#x})"),
             Error::InvalidElementToken(token) => write!(f, "invalid element token ({token:#x})"),
-            Error::InvalidFunctionLength(InvalidLength { expected, actual }) => write!(
+            Error::InvalidFunctionLength { expected, actual } => write!(
                 f,
                 "invalid func length: expected {expected:#x}; got {actual:#x}"
             ),
             Error::InvalidLeb128 => write!(f, "invalid LEB128-encoding"),
             Error::InvalidMagic(magic) => write!(f, "invalid magic ({magic:#x})"),
-            Error::InvalidSectionLength(id, InvalidLength { expected, actual }) => write!(
+            Error::InvalidSectionLength {
+                id,
+                expected,
+                actual,
+            } => write!(
                 f,
                 "invalid section length for {id:?}: expected {expected:#x}; got {actual:#x}"
             ),
             Error::InvalidToken(token) => write!(f, "invalid byte token ({token:#x})"),
             Error::InvalidUtf8 => write!(f, "invalid UTF-8"),
             Error::InvalidValType(valtype) => write!(f, "invalid valtype ({valtype:#x})"),
-            Error::OutOfOrderSection(id1, id2) => {
-                write!(f, "out-of-order sections: {id1:?} before {id2:?}")
+            Error::OutOfOrderSection { before, after } => {
+                write!(f, "out-of-order sections: {before:?} before {after:?}")
             }
             Error::Storage(err) => write!(f, "{err:?}"),
             Error::TooManyLocals(count) => {
@@ -392,10 +396,10 @@ impl<Storage: Stream> Parser<Storage> {
     {
         let offset = self.stream.offset();
         if !context.push(id, offset) {
-            return Err(Error::ExcessiveParsingDepth(ContextFrame {
+            return Err(Error::ExcessiveParsingDepth {
                 context: id.into(),
                 offset,
-            }));
+            });
         }
         let val = f(self, context)?;
         context.pop();
@@ -591,7 +595,10 @@ where
         if id != SectionId::Custom {
             if let Some(last_id) = last_id {
                 if id <= last_id {
-                    return Err(Error::OutOfOrderSection(last_id, id));
+                    return Err(Error::OutOfOrderSection {
+                        before: last_id,
+                        after: id,
+                    });
                 }
                 if id == last_id {
                     return Err(Error::DuplicateSection(id));
@@ -640,13 +647,11 @@ where
         }
         let actual_section_len = decoder.offset() - offset_start;
         if actual_section_len != (len as usize) {
-            return Err(Error::InvalidSectionLength(
+            return Err(Error::InvalidSectionLength {
                 id,
-                InvalidLength {
-                    expected: len,
-                    actual: actual_section_len as u32,
-                },
-            ));
+                expected: len,
+                actual: actual_section_len as u32,
+            });
         }
     }
 

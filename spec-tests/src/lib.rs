@@ -95,7 +95,11 @@ fn assert_malformed(wasm: &str, expected: &wast2json::Error) {
     // Very much best-effort.
     match expected {
         EndOpcodeExpected => error_matches!(
-            Error::Storage(io::ErrorKind::UnexpectedEof) | Error::InvalidFunctionLength(_)
+            Error::Storage(io::ErrorKind::UnexpectedEof)
+                | Error::InvalidFunctionLength {
+                    expected: _,
+                    actual: _
+                }
         ),
         IllegalOpcode
         | MalformedImportKind
@@ -110,10 +114,22 @@ fn assert_malformed(wasm: &str, expected: &wast2json::Error) {
         MagicHeaderNotDetected => error_matches!(Error::InvalidMagic(_)),
         MalformedUtf8Encoding => error_is!(Error::InvalidUtf8),
         SectionSizeMismatch => {
-            error_matches!(Error::InvalidSectionLength(_, _) | Error::InvalidFunctionLength(_));
+            error_matches!(
+                Error::InvalidSectionLength {
+                    id: _,
+                    expected: _,
+                    actual: _
+                } | Error::InvalidFunctionLength {
+                    expected: _,
+                    actual: _
+                }
+            );
         }
         TooManyLocals => error_matches!(Error::TooManyLocals(_)),
-        UnexpectedContentAfterLastSection => error_matches!(Error::OutOfOrderSection(_, _)),
+        UnexpectedContentAfterLastSection => error_matches!(Error::OutOfOrderSection {
+            before: _,
+            after: _
+        }),
         UnexpectedEnd | UnexpectedEndOfSectionOrFunction => {
             error_is!(Error::Storage(io::ErrorKind::UnexpectedEof));
         }
