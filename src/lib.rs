@@ -24,7 +24,6 @@ use storage::Stream;
 use types::{
     CodeSection, DataSection, ElementSection, ExportSection, FunctionSection, GlobalSection,
     ImportSection, MemorySection, StartSection, TableSection, TypeSection, Version,
-    for_each_bulk_opcode, for_each_opcode,
 };
 
 /// A convenience trait that captures the required allocation-related trait
