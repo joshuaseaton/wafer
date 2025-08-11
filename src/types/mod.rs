@@ -29,7 +29,7 @@ macro_rules! newtype {
         pub struct $type:ident<$($lifetime:lifetime, )? A: Allocator>($underlying:ty);
     ) => {
         $(#[$meta])*
-        pub struct $type<$($lifetime, )? A: Allocator>($underlying);
+        pub struct $type<$($lifetime, )? A: Allocator>(pub(crate) $underlying);
 
         newtype!(@impl [$($lifetime, )? A: Allocator], $type<$($lifetime, )? A>, $underlying);
     };
@@ -47,7 +47,7 @@ macro_rules! newtype {
         pub struct $type:ident<$lifetime:lifetime>($underlying:ty);
     ) => {
         $(#[$meta])*
-        pub struct $type<$lifetime>($underlying);
+        pub struct $type<$lifetime>(pub(crate) $underlying);
 
         newtype!(@impl [$lifetime], $type<$lifetime>, $underlying);
     };
@@ -117,6 +117,15 @@ pub enum ValType {
     FuncRef = RefType::Func as u8,
     /// External reference.
     ExternRef = RefType::Extern as u8,
+}
+
+impl From<RefType> for ValType {
+    fn from(value: RefType) -> Self {
+        match value {
+            RefType::Func => Self::FuncRef,
+            RefType::Extern => Self::ExternRef,
+        }
+    }
 }
 
 newtype!(
@@ -357,6 +366,19 @@ pub enum ImportDescriptor {
     Memory(MemType),
     /// Import a global with the given type.
     Global(GlobalType),
+}
+
+impl ImportDescriptor {
+    // It serves to stably reorder the imports after decoding by type for O(1)
+    // look-up by funcidx/tableidx/memidx/globalidx.
+    pub(crate) const fn discriminant(&self) -> usize {
+        match self {
+            ImportDescriptor::Function(_) => 0,
+            ImportDescriptor::Table(_) => 1,
+            ImportDescriptor::Memory(_) => 2,
+            ImportDescriptor::Global(_) => 3,
+        }
+    }
 }
 
 /// An import declaration.

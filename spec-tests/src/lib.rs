@@ -10,8 +10,9 @@ use std::io;
 use spec_test_macro::wasm_spec_tests;
 use wafer::Module;
 use wafer::core_compat::alloc;
-use wafer::decode::{Error, NoCustomSectionVisitor};
+use wafer::decode::{self, NoCustomSectionVisitor};
 use wafer::storage::Stream;
+use wafer::validate;
 
 #[derive(Debug)]
 struct BufReader<R>(io::BufReader<R>);
@@ -56,12 +57,14 @@ impl<R: io::Read + io::Seek> Stream for BufReader<R> {
 #[allow(unused)]
 fn check_module(wasm: &str) {
     let f = File::open(wasm).unwrap();
-    Module::decode(
+    let module = Module::decode(
         io::BufReader::new(f),
         &mut NoCustomSectionVisitor {},
         alloc::Global,
     )
     .unwrap();
+
+    module.validate().unwrap();
 }
 
 #[allow(unused)]
@@ -75,9 +78,81 @@ fn assert_malformed(wasm: &str, expected: &wast2json::Error) {
         alloc::Global,
     );
 
-    let error = match result {
-        Err(error) => error.error,
-        Ok(_) => panic!("Success!? Expected error: {expected:?}"),
+    if let Err(error) = &result {
+        let error = &error.error;
+
+        macro_rules! error_matches {
+            ($pattern:pat) => {
+                assert!(matches!(error, $pattern), "Unexpected error: {error:?}")
+            };
+        }
+
+        macro_rules! error_is {
+            ($value:expr) => {
+                assert_eq!(*error, $value, "Unexpected error: {error:?}")
+            };
+        }
+
+        // Very much best-effort.
+        match expected {
+            EndOpcodeExpected => error_matches!(
+                decode::Error::Storage(io::ErrorKind::UnexpectedEof)
+                    | decode::Error::InvalidFunctionLength {
+                        expected: _,
+                        actual: _
+                    }
+            ),
+            IllegalOpcode
+            | MalformedImportKind
+            | MalformedMutability
+            | MalformedReferenceType
+            | MalformedSectionId
+            | ZeroByteExpected => error_matches!(decode::Error::InvalidToken(_)),
+            IntegerRepresentationTooLong | IntegerTooLarge => {
+                error_matches!(decode::Error::InvalidLeb128 | decode::Error::InvalidToken(_));
+            }
+            LengthOutOfBounds => {
+                error_matches!(decode::Error::Storage(io::ErrorKind::UnexpectedEof));
+            }
+            MagicHeaderNotDetected => error_matches!(decode::Error::InvalidMagic(_)),
+            MalformedUtf8Encoding => error_is!(decode::Error::InvalidUtf8),
+            SectionSizeMismatch => {
+                error_matches!(
+                    decode::Error::InvalidSectionLength {
+                        id: _,
+                        expected: _,
+                        actual: _
+                    } | decode::Error::InvalidFunctionLength {
+                        expected: _,
+                        actual: _
+                    }
+                );
+            }
+            TooManyLocals => error_matches!(decode::Error::TooManyLocals(_)),
+            UnexpectedContentAfterLastSection => {
+                error_matches!(decode::Error::OutOfOrderSection {
+                    before: _,
+                    after: _
+                });
+            }
+            UnexpectedEnd | UnexpectedEndOfSectionOrFunction => {
+                error_is!(decode::Error::Storage(io::ErrorKind::UnexpectedEof));
+            }
+            UnknownBinaryVersion => error_matches!(decode::Error::UnknownVersion(_)),
+            _ => todo!(
+                "Handle wast2json::Error::{:?} -> wafer::decode::Error mapping",
+                expected
+            ),
+        }
+        return;
+    }
+
+    // If there's any remaining malformedness, it should be caught during
+    // validation.
+    let module = result.unwrap();
+    let result = module.validate();
+    let Err(error) = result else {
+        panic!("Success!? Expected decoding or validation error: {expected:?}")
     };
 
     macro_rules! error_matches {
@@ -92,51 +167,22 @@ fn assert_malformed(wasm: &str, expected: &wast2json::Error) {
         };
     }
 
-    // Very much best-effort.
+    // Also very much best-effort.
     match expected {
-        EndOpcodeExpected => error_matches!(
-            Error::Storage(io::ErrorKind::UnexpectedEof)
-                | Error::InvalidFunctionLength {
-                    expected: _,
-                    actual: _
-                }
-        ),
-        IllegalOpcode
-        | MalformedImportKind
-        | MalformedMutability
-        | MalformedReferenceType
-        | MalformedSectionId
-        | ZeroByteExpected => error_matches!(Error::InvalidToken(_)),
-        IntegerRepresentationTooLong | IntegerTooLarge => {
-            error_matches!(Error::InvalidLeb128 | Error::InvalidToken(_));
+        DataCountAndDataSectionHaveInconsistentLengths => {
+            error_matches!(validate::Error::DataCountMismatch {
+                expected: _,
+                actual: _,
+            });
         }
-        LengthOutOfBounds => error_matches!(Error::Storage(io::ErrorKind::UnexpectedEof)),
-        MagicHeaderNotDetected => error_matches!(Error::InvalidMagic(_)),
-        MalformedUtf8Encoding => error_is!(Error::InvalidUtf8),
-        SectionSizeMismatch => {
-            error_matches!(
-                Error::InvalidSectionLength {
-                    id: _,
-                    expected: _,
-                    actual: _
-                } | Error::InvalidFunctionLength {
-                    expected: _,
-                    actual: _
-                }
-            );
+        FunctionAndCodeSectionHaveInconsistentLengths => {
+            error_matches!(validate::Error::FunctionAndCodeSectionMismatch {
+                funcsec_size: _,
+                codesec_size: _
+            });
         }
-        TooManyLocals => error_matches!(Error::TooManyLocals(_)),
-        UnexpectedContentAfterLastSection => error_matches!(Error::OutOfOrderSection {
-            before: _,
-            after: _
-        }),
-        UnexpectedEnd | UnexpectedEndOfSectionOrFunction => {
-            error_is!(Error::Storage(io::ErrorKind::UnexpectedEof));
-        }
-
-        UnknownBinaryVersion => error_matches!(Error::UnknownVersion(_)),
         _ => todo!(
-            "Handle wast2json::Error::{:?} -> decode error mapping",
+            "Handle wast2json::Error::{:?} -> wafer::validate::Error mapping",
             expected
         ),
     }

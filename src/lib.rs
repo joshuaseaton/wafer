@@ -16,6 +16,7 @@ pub mod core_compat;
 pub mod decode;
 pub mod storage;
 pub mod types;
+pub mod validate;
 
 use core::fmt;
 
@@ -25,9 +26,10 @@ use types::{
     CodeSection, DataSection, ElementSection, ExportSection, FunctionSection, GlobalSection,
     ImportSection, MemorySection, StartSection, TableSection, TypeSection, Version,
 };
+use validate::{prepare_module_for_validation, validate_module};
 
-/// A convenience trait that captures the required allocation-related trait
-/// bounds.
+/// A convenience trait that captures the commonly required allocation-related
+/// trait bounds.
 pub trait Allocator: core_compat::alloc::Allocator + fmt::Debug + Clone {}
 
 impl<A> Allocator for A where A: core_compat::alloc::Allocator + fmt::Debug + Clone {}
@@ -71,7 +73,16 @@ impl<A: Allocator> Module<A> {
         alloc: A,
     ) -> Result<Self, decode::ErrorWithContext<Storage>> {
         let mut context = ContextStack::default();
-        decode_module(storage, &mut context, customsec_visitor, alloc)
-            .map_err(|error| decode::ErrorWithContext { error, context })
+        let mut module = decode_module(storage, &mut context, customsec_visitor, alloc)
+            .map_err(|error| decode::ErrorWithContext { error, context })?;
+        // Prepare now so the validation phase can take it for granted that
+        // certain internal invariants hold for any constructed Module.
+        prepare_module_for_validation(&mut module);
+        Ok(module)
+    }
+
+    /// Validates the module.
+    pub fn validate(&self) -> Result<(), validate::Error> {
+        validate_module(self)
     }
 }

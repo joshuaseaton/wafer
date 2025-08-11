@@ -23,19 +23,10 @@ const DISABLED_TESTS: &[&str] = &[
     "align_111_assert_malformed_930",
     "align_112_assert_malformed_949",
     "align_113_assert_malformed_968",
-    "binary_56_assert_malformed_401",
-    "binary_57_assert_malformed_411",
-    "binary_58_assert_malformed_420",
-    "binary_59_assert_malformed_431",
-    "binary_62_assert_malformed_454",
-    "binary_63_assert_malformed_466",
-    "binary_64_assert_malformed_478",
     "binary_66_assert_malformed_494",
     "binary_67_assert_malformed_517",
     "custom_5_assert_malformed_77",
     "custom_6_assert_malformed_85",
-    "custom_8_assert_malformed_102",
-    "custom_10_assert_malformed_123",
 ];
 
 fn load_spec_tests() -> Vec<Command> {
