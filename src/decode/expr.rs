@@ -8,6 +8,7 @@
 //! for more detail.)
 
 use core::ptr;
+use core::sync::atomic::{self, AtomicBool};
 
 use crate::Allocator;
 use crate::core_compat;
@@ -215,13 +216,6 @@ impl<A: Allocator> ExpressionBuilder<A> {
     }
 }
 
-// Type alias for function pointer table entries
-type TranscoderFn<A, Storage> = fn(
-    &mut Decoder<Storage>,
-    &mut ContextStack,
-    &mut ExpressionBuilder<A>,
-) -> Result<(), Error<Storage>>;
-
 pub(super) fn transcode_expression<A: Allocator, Storage: Stream>(
     decoder: &mut Decoder<Storage>,
     context: &mut ContextStack,
@@ -231,32 +225,8 @@ pub(super) fn transcode_expression<A: Allocator, Storage: Stream>(
     // two loads two loads and an indirect call: the operand type is looked up
     // in OPCODE_TO_OPERAND_TYPE, which then gives as an index to into the small
     // transcoder table constructed below.
-
-    let operand_transcoders = {
-        let mut operand_transcoders: [TranscoderFn<A, Storage>; OPERAND_TYPE_VARIANT_COUNT] =
-            [|_, _, _| unreachable!(); _];
-
-        macro_rules! set {
-            ($operand_type:path, $type:ty) => {
-                operand_transcoders[$operand_type as usize] = <$type as Transcodable<A>>::transcode;
-            };
-        }
-        set!(OperandType::BlockType, BlockType);
-        set!(OperandType::BrTable, BrTableOperands<A>);
-        set!(OperandType::CallIndirect, CallIndirectOperands);
-        set!(OperandType::F32, f32);
-        set!(OperandType::F64, f64);
-        set!(OperandType::I32, i32);
-        set!(OperandType::I64, i64);
-        set!(OperandType::MemArg, MemArg);
-        set!(OperandType::RefType, RefType);
-        set!(OperandType::SelectT, SelectTOperands<A>);
-        set!(OperandType::U32, u32);
-        operand_transcoders[OperandType::None as usize] = |_, _, _| Ok(());
-        operand_transcoders[OperandType::BulkOp as usize] = transcode_bulk_op;
-        operand_transcoders[OperandType::VectorOp as usize] = transcode_vector_op;
-        operand_transcoders
-    };
+    let witness = ();
+    let operand_transcoders = get_operand_transcoders(&witness);
 
     let mut builder = ExpressionBuilder::new(alloc.clone());
     let mut depth = 0u32;
@@ -297,22 +267,8 @@ fn transcode_bulk_op<A: Allocator, Storage: Stream>(
     // through two loads two loads and an indirect call: the bulk operand type
     // is looked up in BULK_OPCODE_TO_OPERAND_TYPE, which then gives as an index
     // to into the small transcoder table constructed below.
-
-    let operand_transcoders = {
-        let mut operand_transcoders: [TranscoderFn<A, Storage>; BULK_OPERAND_TYPE_VARIANT_COUNT] =
-            [|_, _, _| unreachable!(); _];
-        macro_rules! set {
-            ($operand_type:path, $type:ty) => {
-                operand_transcoders[$operand_type as usize] = <$type as Transcodable<A>>::transcode;
-            };
-        }
-        set!(BulkOperandType::TableCopyOperands, TableCopyOperands);
-        set!(BulkOperandType::TableInitOperands, TableInitOperands);
-        set!(BulkOperandType::U32, u32);
-        operand_transcoders[OperandType::None as usize] = |_, _, _| Ok(());
-        operand_transcoders
-    };
-
+    let witness = ();
+    let operand_transcoders = get_bulk_operand_transcoders(&witness);
     let bulk_op: BulkOpcode = decoder.read_bounded(context)?;
     builder.write(bulk_op)?;
 
@@ -338,4 +294,89 @@ fn transcode_vector_op<A: Allocator, Storage: Stream>(
     _builder: &mut ExpressionBuilder<A>,
 ) -> Result<(), Error<Storage>> {
     todo!("vector instructions");
+}
+
+// Type alias for function pointer table entries
+type TranscoderFn<A, Storage> = fn(
+    &mut Decoder<Storage>,
+    &mut ContextStack,
+    &mut ExpressionBuilder<A>,
+) -> Result<(), Error<Storage>>;
+
+// The witness serves to just introduce a lifetime less than static, since we
+// can't construct a static TranscoderFn slice if A and Storage themselves don't
+// have static lifetimes.
+fn get_operand_transcoders<A: Allocator, Storage: Stream>(
+    _witness: &(),
+) -> &[TranscoderFn<A, Storage>; OPERAND_TYPE_VARIANT_COUNT] {
+    static mut RAW_TRANSCODERS: [usize; OPERAND_TYPE_VARIANT_COUNT] = [0; _];
+    static INITIALIZED: AtomicBool = AtomicBool::new(false);
+
+    // Safety: usize has the same ABI as a function pointer.
+    let transcoders =
+        unsafe { &mut *(&raw mut RAW_TRANSCODERS).cast::<[TranscoderFn<A, Storage>; _]>() };
+
+    if INITIALIZED
+        .compare_exchange(
+            false,
+            true,
+            atomic::Ordering::Acquire,
+            atomic::Ordering::Relaxed,
+        )
+        .is_ok()
+    {
+        macro_rules! set {
+            ($operand_type:path, $type:ty) => {
+                transcoders[$operand_type as usize] = <$type as Transcodable<A>>::transcode;
+            };
+        }
+        set!(OperandType::BlockType, BlockType);
+        set!(OperandType::BrTable, BrTableOperands<A>);
+        set!(OperandType::CallIndirect, CallIndirectOperands);
+        set!(OperandType::F32, f32);
+        set!(OperandType::F64, f64);
+        set!(OperandType::I32, i32);
+        set!(OperandType::I64, i64);
+        set!(OperandType::MemArg, MemArg);
+        set!(OperandType::RefType, RefType);
+        set!(OperandType::SelectT, SelectTOperands<A>);
+        set!(OperandType::U32, u32);
+        transcoders[OperandType::None as usize] = |_, _, _| Ok(());
+        transcoders[OperandType::BulkOp as usize] = transcode_bulk_op;
+        transcoders[OperandType::VectorOp as usize] = transcode_vector_op;
+    }
+    transcoders
+}
+
+// As above, the witness serves to just introduce a lifetime less than static
+fn get_bulk_operand_transcoders<A: Allocator, Storage: Stream>(
+    _witness: &(),
+) -> &[TranscoderFn<A, Storage>; BULK_OPERAND_TYPE_VARIANT_COUNT] {
+    static mut RAW_TRANSCODERS: [usize; BULK_OPERAND_TYPE_VARIANT_COUNT] = [0; _];
+    static INITIALIZED: AtomicBool = AtomicBool::new(false);
+
+    // Safety: usize has the same ABI as a function pointer.
+    let transcoders =
+        unsafe { &mut *(&raw mut RAW_TRANSCODERS).cast::<[TranscoderFn<A, Storage>; _]>() };
+
+    if INITIALIZED
+        .compare_exchange(
+            false,
+            true,
+            atomic::Ordering::Acquire,
+            atomic::Ordering::Relaxed,
+        )
+        .is_ok()
+    {
+        macro_rules! set {
+            ($operand_type:path, $type:ty) => {
+                transcoders[$operand_type as usize] = <$type as Transcodable<A>>::transcode;
+            };
+        }
+        set!(BulkOperandType::TableCopyOperands, TableCopyOperands);
+        set!(BulkOperandType::TableInitOperands, TableInitOperands);
+        set!(BulkOperandType::U32, u32);
+        transcoders[BulkOperandType::None as usize] = |_, _, _| Ok(());
+    }
+    transcoders
 }
