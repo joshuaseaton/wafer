@@ -27,7 +27,7 @@ use crate::types::{
     TableInitOperands, ValType,
 };
 
-use super::{ContextStack, Contextual, Decodable, Error, Parser};
+use super::{ContextStack, Contextual, Decodable, Decoder, Error};
 
 // The maximum natural alignment of any of the structures we use to represent
 // instruction operands.
@@ -82,7 +82,7 @@ trait Transcodable<A: Allocator>: Decodable<A> + Contextual {
     fn write_to(self, builder: &mut ExpressionBuilder<A>) -> Result<(), TryReserveError>;
 
     fn transcode<Storage: Stream>(
-        decoder: &mut Parser<Storage>,
+        decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
         builder: &mut ExpressionBuilder<A>,
     ) -> Result<(), Error<Storage>>;
@@ -118,7 +118,7 @@ where
     }
 
     fn transcode<Storage: Stream>(
-        decoder: &mut Parser<Storage>,
+        decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
         builder: &mut ExpressionBuilder<A>,
     ) -> Result<(), Error<Storage>> {
@@ -142,7 +142,7 @@ where
     }
 
     fn transcode<Storage: Stream>(
-        decoder: &mut Parser<Storage>,
+        decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
         builder: &mut ExpressionBuilder<A>,
     ) -> Result<(), Error<Storage>> {
@@ -163,7 +163,7 @@ impl<A: Allocator> Transcodable<A> for BrTableOperands<A> {
     }
 
     fn transcode<Storage: Stream>(
-        decoder: &mut Parser<Storage>,
+        decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
         builder: &mut ExpressionBuilder<A>,
     ) -> Result<(), Error<Storage>> {
@@ -180,7 +180,7 @@ impl<A: Allocator> Transcodable<A> for SelectTOperands<A> {
     }
 
     fn transcode<Storage: Stream>(
-        decoder: &mut Parser<Storage>,
+        decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
         builder: &mut ExpressionBuilder<A>,
     ) -> Result<(), Error<Storage>> {
@@ -217,13 +217,13 @@ impl<A: Allocator> ExpressionBuilder<A> {
 
 // Type alias for function pointer table entries
 type TranscoderFn<A, Storage> = fn(
-    &mut Parser<Storage>,
+    &mut Decoder<Storage>,
     &mut ContextStack,
     &mut ExpressionBuilder<A>,
 ) -> Result<(), Error<Storage>>;
 
 pub(super) fn transcode_expression<A: Allocator, Storage: Stream>(
-    decoder: &mut Parser<Storage>,
+    decoder: &mut Decoder<Storage>,
     context: &mut ContextStack,
     alloc: &A,
 ) -> Result<Expression<A>, Error<Storage>> {
@@ -289,7 +289,7 @@ pub(super) fn transcode_expression<A: Allocator, Storage: Stream>(
 }
 
 fn transcode_bulk_op<A: Allocator, Storage: Stream>(
-    decoder: &mut Parser<Storage>,
+    decoder: &mut Decoder<Storage>,
     context: &mut ContextStack,
     builder: &mut ExpressionBuilder<A>,
 ) -> Result<(), Error<Storage>> {
@@ -333,7 +333,7 @@ fn transcode_bulk_op<A: Allocator, Storage: Stream>(
 }
 
 fn transcode_vector_op<A: Allocator, Storage: Stream>(
-    _decoder: &mut Parser<Storage>,
+    _decoder: &mut Decoder<Storage>,
     _context: &mut ContextStack,
     _builder: &mut ExpressionBuilder<A>,
 ) -> Result<(), Error<Storage>> {

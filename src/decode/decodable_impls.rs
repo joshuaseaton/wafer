@@ -17,7 +17,7 @@ use crate::storage::Stream;
 use crate::types::*;
 
 use super::{
-    BoundedDecodable, ContextId, ContextStack, Contextual, Decodable, Error, Magic, Parser,
+    BoundedDecodable, ContextId, ContextStack, Contextual, Decodable, Decoder, Error, Magic,
     transcode_expression,
 };
 
@@ -54,7 +54,7 @@ macro_rules! impl_parsable_for_u8_enum {
     ($type:ty) => {
         impl BoundedDecodable for $type {
             fn decode<Storage: Stream>(
-                decoder: &mut Parser<Storage>,
+                decoder: &mut Decoder<Storage>,
                 _: &mut ContextStack,
             ) -> Result<Self, Error<Storage>> {
                 let byte = decoder.read_byte_raw()?;
@@ -68,7 +68,7 @@ macro_rules! impl_parsable_for_leb128_u32_enum {
     ($type:ty, $make_err:path) => {
         impl BoundedDecodable for $type {
             fn decode<Storage: Stream>(
-                decoder: &mut Parser<Storage>,
+                decoder: &mut Decoder<Storage>,
                 _: &mut ContextStack,
             ) -> Result<Self, Error<Storage>> {
                 let val: u32 = decoder.read_leb128_raw()?;
@@ -82,7 +82,7 @@ macro_rules! impl_parsable_for_le_u32_enum {
     ($type:ty, $make_err:path) => {
         impl BoundedDecodable for $type {
             fn decode<Storage: Stream>(
-                decoder: &mut Parser<Storage>,
+                decoder: &mut Decoder<Storage>,
                 _: &mut ContextStack,
             ) -> Result<Self, Error<Storage>> {
                 let mut buf = [0u8; 4];
@@ -98,7 +98,7 @@ macro_rules! impl_parsable_for_newtype {
     ($type:ident<A>) => {
         impl<A: Allocator> Decodable<A> for $type<A> {
             fn decode<Storage: Stream>(
-                decoder: &mut Parser<Storage>,
+                decoder: &mut Decoder<Storage>,
                 context: &mut ContextStack,
                 alloc: &A,
             ) -> Result<Self, Error<Storage>> {
@@ -111,7 +111,7 @@ macro_rules! impl_parsable_for_newtype {
     ($type:ident) => {
         impl BoundedDecodable for $type {
             fn decode<Storage: Stream>(
-                decoder: &mut Parser<Storage>,
+                decoder: &mut Decoder<Storage>,
                 context: &mut ContextStack,
             ) -> Result<Self, Error<Storage>> {
                 Ok(Self::new(
@@ -128,7 +128,7 @@ where
     A: Allocator,
 {
     fn decode<Storage: Stream>(
-        decoder: &mut Parser<Storage>,
+        decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
         alloc: &A,
     ) -> Result<Self, Error<Storage>> {
@@ -259,7 +259,7 @@ impl_parsable_for_newtype!(TypeSection<A>);
 
 impl BoundedDecodable for u8 {
     fn decode<Storage: Stream>(
-        decoder: &mut Parser<Storage>,
+        decoder: &mut Decoder<Storage>,
         _: &mut ContextStack,
     ) -> Result<Self, Error<Storage>> {
         decoder.read_byte_raw()
@@ -268,7 +268,7 @@ impl BoundedDecodable for u8 {
 
 impl BoundedDecodable for u32 {
     fn decode<Storage: Stream>(
-        decoder: &mut Parser<Storage>,
+        decoder: &mut Decoder<Storage>,
         _: &mut ContextStack,
     ) -> Result<Self, Error<Storage>> {
         decoder.read_leb128_raw()
@@ -277,7 +277,7 @@ impl BoundedDecodable for u32 {
 
 impl BoundedDecodable for i32 {
     fn decode<Storage: Stream>(
-        decoder: &mut Parser<Storage>,
+        decoder: &mut Decoder<Storage>,
         _: &mut ContextStack,
     ) -> Result<Self, Error<Storage>> {
         decoder.read_leb128_raw()
@@ -286,7 +286,7 @@ impl BoundedDecodable for i32 {
 
 impl BoundedDecodable for i64 {
     fn decode<Storage: Stream>(
-        decoder: &mut Parser<Storage>,
+        decoder: &mut Decoder<Storage>,
         _: &mut ContextStack,
     ) -> Result<Self, Error<Storage>> {
         decoder.read_leb128_raw()
@@ -295,7 +295,7 @@ impl BoundedDecodable for i64 {
 
 impl BoundedDecodable for f32 {
     fn decode<Storage: Stream>(
-        decoder: &mut Parser<Storage>,
+        decoder: &mut Decoder<Storage>,
         _: &mut ContextStack,
     ) -> Result<Self, Error<Storage>> {
         let mut buf = [0u8; 4];
@@ -306,7 +306,7 @@ impl BoundedDecodable for f32 {
 
 impl BoundedDecodable for f64 {
     fn decode<Storage: Stream>(
-        decoder: &mut Parser<Storage>,
+        decoder: &mut Decoder<Storage>,
         _: &mut ContextStack,
     ) -> Result<Self, Error<Storage>> {
         let mut buf = [0u8; 8];
@@ -317,7 +317,7 @@ impl BoundedDecodable for f64 {
 
 impl BoundedDecodable for CallIndirectOperands {
     fn decode<Storage: Stream>(
-        decoder: &mut Parser<Storage>,
+        decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
     ) -> Result<Self, Error<Storage>> {
         Ok(Self {
@@ -329,7 +329,7 @@ impl BoundedDecodable for CallIndirectOperands {
 
 impl BoundedDecodable for MemArg {
     fn decode<Storage: Stream>(
-        decoder: &mut Parser<Storage>,
+        decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
     ) -> Result<Self, Error<Storage>> {
         Ok(Self {
@@ -341,7 +341,7 @@ impl BoundedDecodable for MemArg {
 
 impl BoundedDecodable for TableCopyOperands {
     fn decode<Storage: Stream>(
-        decoder: &mut Parser<Storage>,
+        decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
     ) -> Result<Self, Error<Storage>> {
         Ok(Self {
@@ -353,7 +353,7 @@ impl BoundedDecodable for TableCopyOperands {
 
 impl BoundedDecodable for TableInitOperands {
     fn decode<Storage: Stream>(
-        decoder: &mut Parser<Storage>,
+        decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
     ) -> Result<Self, Error<Storage>> {
         Ok(Self {
@@ -365,7 +365,7 @@ impl BoundedDecodable for TableInitOperands {
 
 impl<A: Allocator> Decodable<A> for BrTableOperands<A> {
     fn decode<Storage: Stream>(
-        decoder: &mut Parser<Storage>,
+        decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
         alloc: &A,
     ) -> Result<Self, Error<Storage>> {
@@ -378,7 +378,7 @@ impl<A: Allocator> Decodable<A> for BrTableOperands<A> {
 
 impl<A: Allocator> Decodable<A> for SelectTOperands<A> {
     fn decode<Storage: Stream>(
-        decoder: &mut Parser<Storage>,
+        decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
         alloc: &A,
     ) -> Result<Self, Error<Storage>> {
@@ -390,7 +390,7 @@ impl<A: Allocator> Decodable<A> for SelectTOperands<A> {
 
 impl BoundedDecodable for BlockType {
     fn decode<Storage: Stream>(
-        decoder: &mut Parser<Storage>,
+        decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
     ) -> Result<Self, Error<Storage>> {
         let value: i32 = decoder.read_bounded(context)?;
@@ -421,7 +421,7 @@ impl BoundedDecodable for BlockType {
 
 impl<A: Allocator> Decodable<A> for Name<A> {
     fn decode<Storage: Stream>(
-        decoder: &mut Parser<Storage>,
+        decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
         alloc: &A,
     ) -> Result<Self, Error<Storage>> {
@@ -452,7 +452,7 @@ enum FunctionTypeToken {
 
 impl<A: Allocator> Decodable<A> for FunctionType<A> {
     fn decode<Storage: Stream>(
-        decoder: &mut Parser<Storage>,
+        decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
         alloc: &A,
     ) -> Result<Self, Error<Storage>> {
@@ -473,7 +473,7 @@ enum LimitsToken {
 
 impl BoundedDecodable for Limits {
     fn decode<Storage: Stream>(
-        decoder: &mut Parser<Storage>,
+        decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
     ) -> Result<Self, Error<Storage>> {
         let token: LimitsToken = decoder.read_bounded(context)?;
@@ -488,7 +488,7 @@ impl BoundedDecodable for Limits {
 
 impl BoundedDecodable for TableType {
     fn decode<Storage: Stream>(
-        decoder: &mut Parser<Storage>,
+        decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
     ) -> Result<Self, Error<Storage>> {
         Ok(Self {
@@ -500,7 +500,7 @@ impl BoundedDecodable for TableType {
 
 impl BoundedDecodable for GlobalType {
     fn decode<Storage: Stream>(
-        decoder: &mut Parser<Storage>,
+        decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
     ) -> Result<Self, Error<Storage>> {
         Ok(Self {
@@ -512,7 +512,7 @@ impl BoundedDecodable for GlobalType {
 
 impl<A: Allocator> Decodable<A> for Expression<A> {
     fn decode<Storage: Stream>(
-        decoder: &mut Parser<Storage>,
+        decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
         alloc: &A,
     ) -> Result<Self, Error<Storage>> {
@@ -530,7 +530,7 @@ enum ImportDescriptorToken {
 }
 impl BoundedDecodable for ImportDescriptor {
     fn decode<Storage: Stream>(
-        decoder: &mut Parser<Storage>,
+        decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
     ) -> Result<Self, Error<Storage>> {
         type Token = ImportDescriptorToken;
@@ -546,7 +546,7 @@ impl BoundedDecodable for ImportDescriptor {
 
 impl<A: Allocator> Decodable<A> for Import<A> {
     fn decode<Storage: Stream>(
-        decoder: &mut Parser<Storage>,
+        decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
         alloc: &A,
     ) -> Result<Self, Error<Storage>> {
@@ -560,7 +560,7 @@ impl<A: Allocator> Decodable<A> for Import<A> {
 
 impl<A: Allocator> Decodable<A> for Global<A> {
     fn decode<Storage: Stream>(
-        decoder: &mut Parser<Storage>,
+        decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
         alloc: &A,
     ) -> Result<Self, Error<Storage>> {
@@ -581,7 +581,7 @@ enum ExportDescriptorToken {
 }
 impl BoundedDecodable for ExportDescriptor {
     fn decode<Storage: Stream>(
-        decoder: &mut Parser<Storage>,
+        decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
     ) -> Result<Self, Error<Storage>> {
         type Token = ExportDescriptorToken;
@@ -597,7 +597,7 @@ impl BoundedDecodable for ExportDescriptor {
 
 impl<A: Allocator> Decodable<A> for Export<A> {
     fn decode<Storage: Stream>(
-        decoder: &mut Parser<Storage>,
+        decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
         alloc: &A,
     ) -> Result<Self, Error<Storage>> {
@@ -610,7 +610,7 @@ impl<A: Allocator> Decodable<A> for Export<A> {
 
 impl<A: Allocator> Decodable<A> for ElementSegment<A> {
     fn decode<Storage: Stream>(
-        decoder: &mut Parser<Storage>,
+        decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
         alloc: &A,
     ) -> Result<Self, Error<Storage>> {
@@ -735,7 +735,7 @@ impl From<ElementKind> for RefType {
 
 impl<A: Allocator> Decodable<A> for Locals<A> {
     fn decode<Storage: Stream>(
-        decoder: &mut Parser<Storage>,
+        decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
         alloc: &A,
     ) -> Result<Self, Error<Storage>> {
@@ -770,7 +770,7 @@ impl From<ValType> for Local {
 
 impl<A: Allocator> Decodable<A> for Function<A> {
     fn decode<Storage: Stream>(
-        decoder: &mut Parser<Storage>,
+        decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
         alloc: &A,
     ) -> Result<Self, Error<Storage>> {
@@ -799,7 +799,7 @@ enum DataSegmentToken {
 
 impl<A: Allocator> Decodable<A> for DataSegment<A> {
     fn decode<Storage: Stream>(
-        decoder: &mut Parser<Storage>,
+        decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
         alloc: &A,
     ) -> Result<Self, Error<Storage>> {

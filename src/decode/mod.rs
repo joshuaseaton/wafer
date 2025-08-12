@@ -283,7 +283,7 @@ pub enum Error<Storage: Stream> {
     AllocError,
     /// A given section appears more than once in the module.
     DuplicateSection(SectionId),
-    /// Parser context stack exceeded maximum depth to prevent stack overflow.
+    /// Decoder context stack exceeded maximum depth to prevent stack overflow.
     ExcessiveParsingDepth {
         context: &'static str,
         offset: usize,
@@ -375,11 +375,11 @@ impl<Storage: Stream> From<TryReserveError> for Error<Storage> {
     }
 }
 
-pub(crate) struct Parser<Storage: Stream> {
+pub(crate) struct Decoder<Storage: Stream> {
     stream: Storage,
 }
 
-impl<Storage: Stream> Parser<Storage> {
+impl<Storage: Stream> Decoder<Storage> {
     fn new(stream: Storage) -> Self {
         Self { stream }
     }
@@ -497,7 +497,7 @@ where
 {
     /// Parse this type from the binary stream.
     fn decode<Storage: Stream>(
-        decoder: &mut Parser<Storage>,
+        decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
         alloc: &A,
     ) -> Result<Self, Error<Storage>>;
@@ -506,14 +506,14 @@ where
 // Types that can be decoded from a storage stream without allocation.
 trait BoundedDecodable: Sized + Copy {
     fn decode<Storage: Stream>(
-        decoder: &mut Parser<Storage>,
+        decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
     ) -> Result<Self, Error<Storage>>;
 }
 
 impl<Bounded: BoundedDecodable, A: Allocator> Decodable<A> for Bounded {
     fn decode<Storage: Stream>(
-        decoder: &mut Parser<Storage>,
+        decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
         _: &A,
     ) -> Result<Self, Error<Storage>> {
@@ -559,7 +559,7 @@ where
     CustomSecVisitor: CustomSectionVisitor<A>,
     A: Allocator,
 {
-    let mut decoder = Parser::new(storage);
+    let mut decoder = Decoder::new(storage);
     decoder.read_bounded::<Magic>(context)?;
     let version: Version = decoder.read_bounded(context)?;
 
