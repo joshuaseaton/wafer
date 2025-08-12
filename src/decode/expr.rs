@@ -189,7 +189,7 @@ impl<A: Allocator> Transcodable<A> for SelectTOperands<A> {
     }
 }
 
-// A simple builder for creating
+// A simple builder for creating transcoded expressions.
 #[derive(Debug)]
 struct ExpressionBuilder<A: Allocator> {
     data: Vec<u8, AlignedAllocator<A>>,
@@ -222,11 +222,11 @@ pub(super) fn transcode_expression<A: Allocator, Storage: Stream>(
     alloc: &A,
 ) -> Result<Expression<A>, Error<Storage>> {
     // The strategy here is to efficiently reduce operand transcoding through
-    // two loads two loads and an indirect call: the operand type is looked up
-    // in OPCODE_TO_OPERAND_TYPE, which then gives as an index to into the small
+    // two loads and an indirect call: the operand type is looked up in
+    // OPCODE_TO_OPERAND_TYPE, which then gives us an index to into the small
     // transcoder table constructed below.
-    let witness = ();
-    let operand_transcoders = get_operand_transcoders(&witness);
+    let lifetime_witness = ();
+    let operand_transcoders = get_operand_transcoders(&lifetime_witness);
 
     let mut builder = ExpressionBuilder::new(alloc.clone());
     let mut depth = 0u32;
@@ -264,11 +264,11 @@ fn transcode_bulk_op<A: Allocator, Storage: Stream>(
     builder: &mut ExpressionBuilder<A>,
 ) -> Result<(), Error<Storage>> {
     // The strategy here is to efficiently reduce bulk operand transcoding
-    // through two loads two loads and an indirect call: the bulk operand type
-    // is looked up in BULK_OPCODE_TO_OPERAND_TYPE, which then gives as an index
-    // to into the small transcoder table constructed below.
-    let witness = ();
-    let operand_transcoders = get_bulk_operand_transcoders(&witness);
+    // through two loads and an indirect call: the bulk operand type is looked
+    // up in BULK_OPCODE_TO_OPERAND_TYPE, which then gives us an index to into
+    // the small transcoder table constructed below.
+    let lifetime_witness = ();
+    let operand_transcoders = get_bulk_operand_transcoders(&lifetime_witness);
     let bulk_op: BulkOpcode = decoder.read_bounded(context)?;
     builder.write(bulk_op)?;
 
