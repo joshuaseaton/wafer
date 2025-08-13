@@ -1,6 +1,6 @@
 # Wafer
 
-**W**eb **A**ssembly... **F**ast? (/**F**lexible?)... **E**mbeddable
+**W**eb **A**ssembly... **F**lexible?(/**F**ast?)... **E**mbeddable
 **R**untime.
 
 A WebAssembly decoding, validation, and runtime library focused on correctness,
@@ -37,8 +37,7 @@ Streaming decoding/parsing with contextual error reporting. Maintains a
 context stack during decoding to provide detailed error locations. Handles all
 WASM object types with proper validation. Re-encodes WASM expressions from
 LEB128-encoded format into a naturally-aligned and repr(C)-encoded bytecode for
-later performant execution. Uses lookup tables for efficient instruction
-dispatch around operand re-encoding.
+later performant execution.
 
 ```rust
 use wafer::Module;
@@ -50,8 +49,7 @@ let storage = Buffer::new(wasm_bytes);
 let mut visitor = NoCustomSectionVisitor;
 
 let module = Module::decode(storage, &mut visitor, std::alloc::Global)?;
-
-println!("Functions: {}", module.funcsec.as_ref().map_or(0, |s| s.len()));
+println!("{module:#?}");
 ```
 
 ## Validation (TODO)
