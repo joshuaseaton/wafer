@@ -42,13 +42,11 @@ later performant execution.
 ```rust
 use wafer::Module;
 use wafer::decode::NoCustomSectionVisitor;
-use wafer::storage::Buffer;
 
-let wasm_bytes = include_bytes!("module.wasm");
-let storage = Buffer::new(wasm_bytes);
+let module_bytes = include_bytes!("module.wasm");
 let mut visitor = NoCustomSectionVisitor;
 
-let module = Module::decode(storage, &mut visitor, std::alloc::Global)?;
+let module = Module::decode_bytes(module_bytes, &mut visitor, std::alloc::Global)?;
 println!("{module:#?}");
 ```
 

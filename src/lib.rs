@@ -21,7 +21,7 @@ pub mod validate;
 use core::fmt;
 
 use decode::{ContextStack, CustomSectionVisitor, decode_module};
-use storage::Stream;
+use storage::{MemoryEof, Stream};
 use types::{
     CodeSection, DataSection, ElementSection, ExportSection, FunctionSection, GlobalSection,
     ImportSection, MemorySection, StartSection, TableSection, TypeSection, Version,
@@ -79,6 +79,15 @@ impl<A: Allocator> Module<A> {
         // certain internal invariants hold for any constructed Module.
         prepare_module_for_validation(&mut module);
         Ok(module)
+    }
+
+    /// Decodes a module directly from memory.
+    pub fn decode_bytes<Bytes: AsRef<[u8]>, CustomSecVisitor: CustomSectionVisitor<A>>(
+        bytes: Bytes,
+        customsec_visitor: &mut CustomSecVisitor,
+        alloc: A,
+    ) -> Result<Self, decode::ErrorWithContext<MemoryEof>> {
+        Self::decode(storage::Buffer::new(bytes), customsec_visitor, alloc)
     }
 
     /// Validates the module.

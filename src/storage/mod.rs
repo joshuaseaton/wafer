@@ -53,23 +53,27 @@ pub trait Stream {
     }
 }
 
+/// Represents attempting to read past the end of a buffer.
+#[derive(Debug)]
+pub struct MemoryEof {}
+
 /// In-memory buffer implementation of [`Stream`].
-pub struct Buffer<Bytes: AsRef<[u8]>> {
+pub(super) struct Buffer<Bytes: AsRef<[u8]>> {
     bytes: Bytes,
     pos: usize,
 }
 
 impl<Bytes: AsRef<[u8]>> Buffer<Bytes> {
     /// Create a new buffer stream from the given bytes.
-    pub fn new(bytes: Bytes) -> Self {
+    pub(super) fn new(bytes: Bytes) -> Self {
         Self { bytes, pos: 0 }
     }
 }
 
 impl<Bytes: AsRef<[u8]>> Stream for Buffer<Bytes> {
-    type Error = ();
+    type Error = MemoryEof;
 
-    fn is_eof((): &Self::Error) -> bool {
+    fn is_eof(_: &Self::Error) -> bool {
         true
     }
 
@@ -84,7 +88,7 @@ impl<Bytes: AsRef<[u8]>> Stream for Buffer<Bytes> {
             self.pos += 1;
             Ok(byte)
         } else {
-            Err(())
+            Err(MemoryEof {})
         }
     }
 
@@ -96,7 +100,7 @@ impl<Bytes: AsRef<[u8]>> Stream for Buffer<Bytes> {
             self.pos += buf.len();
             Ok(())
         } else {
-            Err(())
+            Err(MemoryEof {})
         }
     }
 
@@ -107,7 +111,7 @@ impl<Bytes: AsRef<[u8]>> Stream for Buffer<Bytes> {
             self.pos += count;
             Ok(())
         } else {
-            Err(())
+            Err(MemoryEof {})
         }
     }
 }
