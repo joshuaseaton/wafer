@@ -56,7 +56,7 @@ macro_rules! impl_parsable_for_u8_enum {
             fn decode<Storage: Stream>(
                 decoder: &mut Decoder<Storage>,
                 _: &mut ContextStack,
-            ) -> Result<Self, Error<Storage>> {
+            ) -> Result<Self, Error<Storage::Error>> {
                 let byte = decoder.read_byte_raw()?;
                 Self::try_from(byte).map_err(|_| Error::InvalidToken(byte))
             }
@@ -70,7 +70,7 @@ macro_rules! impl_parsable_for_leb128_u32_enum {
             fn decode<Storage: Stream>(
                 decoder: &mut Decoder<Storage>,
                 _: &mut ContextStack,
-            ) -> Result<Self, Error<Storage>> {
+            ) -> Result<Self, Error<Storage::Error>> {
                 let val: u32 = decoder.read_leb128_raw()?;
                 Self::try_from(val).map_err(|_| $make_err(val))
             }
@@ -84,7 +84,7 @@ macro_rules! impl_parsable_for_le_u32_enum {
             fn decode<Storage: Stream>(
                 decoder: &mut Decoder<Storage>,
                 _: &mut ContextStack,
-            ) -> Result<Self, Error<Storage>> {
+            ) -> Result<Self, Error<Storage::Error>> {
                 let mut buf = [0u8; 4];
                 decoder.read_exact_raw(&mut buf)?;
                 let val = u32::from_le_bytes(buf);
@@ -101,7 +101,7 @@ macro_rules! impl_parsable_for_newtype {
                 decoder: &mut Decoder<Storage>,
                 context: &mut ContextStack,
                 alloc: &A,
-            ) -> Result<Self, Error<Storage>> {
+            ) -> Result<Self, Error<Storage::Error>> {
                 Ok(Self::new(<Self as ops::Deref>::Target::decode(
                     decoder, context, alloc,
                 )?))
@@ -113,7 +113,7 @@ macro_rules! impl_parsable_for_newtype {
             fn decode<Storage: Stream>(
                 decoder: &mut Decoder<Storage>,
                 context: &mut ContextStack,
-            ) -> Result<Self, Error<Storage>> {
+            ) -> Result<Self, Error<Storage::Error>> {
                 Ok(Self::new(
                     <<Self as ops::Deref>::Target as BoundedDecodable>::decode(decoder, context)?,
                 ))
@@ -131,7 +131,7 @@ where
         decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
         alloc: &A,
-    ) -> Result<Self, Error<Storage>> {
+    ) -> Result<Self, Error<Storage::Error>> {
         let mut len: u32 = decoder.read_bounded(context)?;
         let mut vec = Vec::new_in(alloc.clone());
         vec.try_reserve_exact(len as usize)?;
@@ -261,7 +261,7 @@ impl BoundedDecodable for u8 {
     fn decode<Storage: Stream>(
         decoder: &mut Decoder<Storage>,
         _: &mut ContextStack,
-    ) -> Result<Self, Error<Storage>> {
+    ) -> Result<Self, Error<Storage::Error>> {
         decoder.read_byte_raw()
     }
 }
@@ -270,7 +270,7 @@ impl BoundedDecodable for u32 {
     fn decode<Storage: Stream>(
         decoder: &mut Decoder<Storage>,
         _: &mut ContextStack,
-    ) -> Result<Self, Error<Storage>> {
+    ) -> Result<Self, Error<Storage::Error>> {
         decoder.read_leb128_raw()
     }
 }
@@ -279,7 +279,7 @@ impl BoundedDecodable for i32 {
     fn decode<Storage: Stream>(
         decoder: &mut Decoder<Storage>,
         _: &mut ContextStack,
-    ) -> Result<Self, Error<Storage>> {
+    ) -> Result<Self, Error<Storage::Error>> {
         decoder.read_leb128_raw()
     }
 }
@@ -288,7 +288,7 @@ impl BoundedDecodable for i64 {
     fn decode<Storage: Stream>(
         decoder: &mut Decoder<Storage>,
         _: &mut ContextStack,
-    ) -> Result<Self, Error<Storage>> {
+    ) -> Result<Self, Error<Storage::Error>> {
         decoder.read_leb128_raw()
     }
 }
@@ -297,7 +297,7 @@ impl BoundedDecodable for f32 {
     fn decode<Storage: Stream>(
         decoder: &mut Decoder<Storage>,
         _: &mut ContextStack,
-    ) -> Result<Self, Error<Storage>> {
+    ) -> Result<Self, Error<Storage::Error>> {
         let mut buf = [0u8; 4];
         decoder.read_exact_raw(&mut buf)?;
         Ok(f32::from_le_bytes(buf))
@@ -308,7 +308,7 @@ impl BoundedDecodable for f64 {
     fn decode<Storage: Stream>(
         decoder: &mut Decoder<Storage>,
         _: &mut ContextStack,
-    ) -> Result<Self, Error<Storage>> {
+    ) -> Result<Self, Error<Storage::Error>> {
         let mut buf = [0u8; 8];
         decoder.read_exact_raw(&mut buf)?;
         Ok(f64::from_le_bytes(buf))
@@ -319,7 +319,7 @@ impl BoundedDecodable for CallIndirectOperands {
     fn decode<Storage: Stream>(
         decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
-    ) -> Result<Self, Error<Storage>> {
+    ) -> Result<Self, Error<Storage::Error>> {
         Ok(Self {
             table: decoder.read_bounded(context)?,
             ty: decoder.read_bounded(context)?,
@@ -331,7 +331,7 @@ impl BoundedDecodable for MemArg {
     fn decode<Storage: Stream>(
         decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
-    ) -> Result<Self, Error<Storage>> {
+    ) -> Result<Self, Error<Storage::Error>> {
         Ok(Self {
             align: decoder.read_bounded(context)?,
             offset: decoder.read_bounded(context)?,
@@ -343,7 +343,7 @@ impl BoundedDecodable for TableCopyOperands {
     fn decode<Storage: Stream>(
         decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
-    ) -> Result<Self, Error<Storage>> {
+    ) -> Result<Self, Error<Storage::Error>> {
         Ok(Self {
             src: decoder.read_bounded(context)?,
             dst: decoder.read_bounded(context)?,
@@ -355,7 +355,7 @@ impl BoundedDecodable for TableInitOperands {
     fn decode<Storage: Stream>(
         decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
-    ) -> Result<Self, Error<Storage>> {
+    ) -> Result<Self, Error<Storage::Error>> {
         Ok(Self {
             table: decoder.read_bounded(context)?,
             elem: decoder.read_bounded(context)?,
@@ -368,7 +368,7 @@ impl<A: Allocator> Decodable<A> for BrTableOperands<A> {
         decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
         alloc: &A,
-    ) -> Result<Self, Error<Storage>> {
+    ) -> Result<Self, Error<Storage::Error>> {
         Ok(Self {
             labels: decoder.read(context, alloc)?,
             default: decoder.read_bounded(context)?,
@@ -381,7 +381,7 @@ impl<A: Allocator> Decodable<A> for SelectTOperands<A> {
         decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
         alloc: &A,
-    ) -> Result<Self, Error<Storage>> {
+    ) -> Result<Self, Error<Storage::Error>> {
         Ok(Self {
             types: decoder.read(context, alloc)?,
         })
@@ -392,7 +392,7 @@ impl BoundedDecodable for BlockType {
     fn decode<Storage: Stream>(
         decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
-    ) -> Result<Self, Error<Storage>> {
+    ) -> Result<Self, Error<Storage::Error>> {
         let value: i32 = decoder.read_bounded(context)?;
         match value {
             n if n < 0 => {
@@ -424,7 +424,7 @@ impl<A: Allocator> Decodable<A> for Name<A> {
         decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
         alloc: &A,
-    ) -> Result<Self, Error<Storage>> {
+    ) -> Result<Self, Error<Storage::Error>> {
         let len: u32 = decoder.read_bounded(context)?;
         let mut bytes = Vec::new_in(alloc.clone());
         bytes.try_reserve_exact(len as usize)?;
@@ -455,7 +455,7 @@ impl<A: Allocator> Decodable<A> for FunctionType<A> {
         decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
         alloc: &A,
-    ) -> Result<Self, Error<Storage>> {
+    ) -> Result<Self, Error<Storage::Error>> {
         decoder.read_bounded::<FunctionTypeToken>(context)?;
         Ok(Self {
             parameters: decoder.read(context, alloc)?,
@@ -475,7 +475,7 @@ impl BoundedDecodable for Limits {
     fn decode<Storage: Stream>(
         decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
-    ) -> Result<Self, Error<Storage>> {
+    ) -> Result<Self, Error<Storage::Error>> {
         let token: LimitsToken = decoder.read_bounded(context)?;
         let min: u32 = decoder.read_bounded(context)?;
         let max = match token {
@@ -490,7 +490,7 @@ impl BoundedDecodable for TableType {
     fn decode<Storage: Stream>(
         decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
-    ) -> Result<Self, Error<Storage>> {
+    ) -> Result<Self, Error<Storage::Error>> {
         Ok(Self {
             reftype: decoder.read_bounded(context)?,
             limits: decoder.read_bounded(context)?,
@@ -502,7 +502,7 @@ impl BoundedDecodable for GlobalType {
     fn decode<Storage: Stream>(
         decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
-    ) -> Result<Self, Error<Storage>> {
+    ) -> Result<Self, Error<Storage::Error>> {
         Ok(Self {
             value: decoder.read_bounded(context)?,
             mutability: decoder.read_bounded(context)?,
@@ -515,7 +515,7 @@ impl<A: Allocator> Decodable<A> for Expression<A> {
         decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
         alloc: &A,
-    ) -> Result<Self, Error<Storage>> {
+    ) -> Result<Self, Error<Storage::Error>> {
         transcode_expression(decoder, context, alloc)
     }
 }
@@ -532,7 +532,7 @@ impl BoundedDecodable for ImportDescriptor {
     fn decode<Storage: Stream>(
         decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
-    ) -> Result<Self, Error<Storage>> {
+    ) -> Result<Self, Error<Storage::Error>> {
         type Token = ImportDescriptorToken;
 
         match decoder.read_bounded(context)? {
@@ -549,7 +549,7 @@ impl<A: Allocator> Decodable<A> for Import<A> {
         decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
         alloc: &A,
-    ) -> Result<Self, Error<Storage>> {
+    ) -> Result<Self, Error<Storage::Error>> {
         Ok(Self {
             module: decoder.read(context, alloc)?,
             field: decoder.read(context, alloc)?,
@@ -563,7 +563,7 @@ impl<A: Allocator> Decodable<A> for Global<A> {
         decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
         alloc: &A,
-    ) -> Result<Self, Error<Storage>> {
+    ) -> Result<Self, Error<Storage::Error>> {
         Ok(Self {
             ty: decoder.read_bounded(context)?,
             init: decoder.read(context, alloc)?,
@@ -583,7 +583,7 @@ impl BoundedDecodable for ExportDescriptor {
     fn decode<Storage: Stream>(
         decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
-    ) -> Result<Self, Error<Storage>> {
+    ) -> Result<Self, Error<Storage::Error>> {
         type Token = ExportDescriptorToken;
 
         match decoder.read_bounded(context)? {
@@ -600,7 +600,7 @@ impl<A: Allocator> Decodable<A> for Export<A> {
         decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
         alloc: &A,
-    ) -> Result<Self, Error<Storage>> {
+    ) -> Result<Self, Error<Storage::Error>> {
         Ok(Self {
             field: decoder.read(context, alloc)?,
             descriptor: decoder.read_bounded(context)?,
@@ -613,7 +613,7 @@ impl<A: Allocator> Decodable<A> for ElementSegment<A> {
         decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
         alloc: &A,
-    ) -> Result<Self, Error<Storage>> {
+    ) -> Result<Self, Error<Storage::Error>> {
         let token: ElementSegmentToken = decoder.read_bounded(context)?;
         match token {
             ElementSegmentToken::ActiveElemIndices => {
@@ -738,7 +738,7 @@ impl<A: Allocator> Decodable<A> for Locals<A> {
         decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
         alloc: &A,
-    ) -> Result<Self, Error<Storage>> {
+    ) -> Result<Self, Error<Storage::Error>> {
         let num_groups: u32 = decoder.read_bounded(context)?;
         let mut locals = Vec::new_in(alloc.clone());
         for _ in 0..num_groups {
@@ -773,7 +773,7 @@ impl<A: Allocator> Decodable<A> for Function<A> {
         decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
         alloc: &A,
-    ) -> Result<Self, Error<Storage>> {
+    ) -> Result<Self, Error<Storage::Error>> {
         let expected_size = decoder.read_bounded::<u32>(context)? as usize;
         let offset_start = decoder.offset();
         let locals = decoder.read(context, alloc)?;
@@ -802,7 +802,7 @@ impl<A: Allocator> Decodable<A> for DataSegment<A> {
         decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
         alloc: &A,
-    ) -> Result<Self, Error<Storage>> {
+    ) -> Result<Self, Error<Storage::Error>> {
         let token: DataSegmentToken = decoder.read_bounded(context)?;
         match token {
             DataSegmentToken::ActiveNoMemIdx => {

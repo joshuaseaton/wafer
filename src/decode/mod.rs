@@ -256,13 +256,13 @@ impl ContextStack {
 
 /// A parsing error with additional context around what hierarchy of things were
 /// being decoded at the time.
-pub struct ErrorWithContext<Storage: Stream> {
+pub struct ErrorWithContext<StorageError> {
     /// The underlying parsing error.
-    pub error: Error<Storage>,
+    pub error: Error<StorageError>,
     pub(crate) context: ContextStack,
 }
 
-impl<Storage: Stream> fmt::Debug for ErrorWithContext<Storage> {
+impl<StorageError: fmt::Debug> fmt::Debug for ErrorWithContext<StorageError> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}", self.error)?;
         for (i, frame) in self.context.iter().enumerate() {
@@ -278,7 +278,7 @@ impl<Storage: Stream> fmt::Debug for ErrorWithContext<Storage> {
 
 /// Represents errors that can arise during module parsing.
 #[derive(Clone, Copy, Eq, PartialEq)]
-pub enum Error<Storage: Stream> {
+pub enum Error<StorageError> {
     /// Failed memory allocation.
     AllocError,
     /// A given section appears more than once in the module.
@@ -315,7 +315,7 @@ pub enum Error<Storage: Stream> {
     /// (Non-custom) sections appear in the wrong order.
     OutOfOrderSection { before: SectionId, after: SectionId },
     /// Error from the underlying storage.
-    Storage(Storage::Error),
+    Storage(StorageError),
     /// Function declares too many local variables (exceeding an
     /// implementation-defined limit).
     TooManyLocals(usize),
@@ -323,7 +323,7 @@ pub enum Error<Storage: Stream> {
     UnknownVersion(u32),
 }
 
-impl<Storage: Stream> fmt::Debug for Error<Storage> {
+impl<StorageError: fmt::Debug> fmt::Debug for Error<StorageError> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Error::AllocError => write!(f, "allocation failure"),
@@ -363,13 +363,13 @@ impl<Storage: Stream> fmt::Debug for Error<Storage> {
     }
 }
 
-impl<Storage: Stream> leb128::Error for Error<Storage> {
+impl<StorageError> leb128::Error for Error<StorageError> {
     fn invalid_leb128() -> Self {
         Error::InvalidLeb128
     }
 }
 
-impl<Storage: Stream> From<TryReserveError> for Error<Storage> {
+impl<StorageError> From<TryReserveError> for Error<StorageError> {
     fn from(_: TryReserveError) -> Self {
         Error::AllocError
     }
@@ -380,6 +380,9 @@ pub(crate) struct Decoder<Storage: Stream> {
 }
 
 impl<Storage: Stream> Decoder<Storage> {
+    // TODO(https://github.com/rust-lang/rust/issues/8995):
+    // type Error = Error<Storage::Error>;
+
     fn new(stream: Storage) -> Self {
         Self { stream }
     }
@@ -390,9 +393,9 @@ impl<Storage: Stream> Decoder<Storage> {
         context: &mut ContextStack,
         id: ContextId,
         f: F,
-    ) -> Result<R, Error<Storage>>
+    ) -> Result<R, Error<Storage::Error>>
     where
-        F: FnOnce(&mut Self, &mut ContextStack) -> Result<R, Error<Storage>>,
+        F: FnOnce(&mut Self, &mut ContextStack) -> Result<R, Error<Storage::Error>>,
     {
         let offset = self.stream.offset();
         if !context.push(id, offset) {
@@ -410,15 +413,15 @@ impl<Storage: Stream> Decoder<Storage> {
         self.stream.offset()
     }
 
-    fn read_byte_raw(&mut self) -> Result<u8, Error<Storage>> {
+    fn read_byte_raw(&mut self) -> Result<u8, Error<Storage::Error>> {
         self.stream.read_byte().map_err(Error::Storage)
     }
 
-    fn read_leb128_raw<T: Leb128>(&mut self) -> Result<T, Error<Storage>> {
+    fn read_leb128_raw<T: Leb128>(&mut self) -> Result<T, Error<Storage::Error>> {
         leb128::read(|| self.read_byte_raw())
     }
 
-    fn read_zero_byte(&mut self, context: &mut ContextStack) -> Result<(), Error<Storage>> {
+    fn read_zero_byte(&mut self, context: &mut ContextStack) -> Result<(), Error<Storage::Error>> {
         self.with_context(context, ContextId::Byte, |decoder, _| {
             let byte = decoder.read_byte_raw()?;
             if byte == 0 {
@@ -429,7 +432,7 @@ impl<Storage: Stream> Decoder<Storage> {
         })
     }
 
-    fn read_exact_raw(&mut self, buf: &mut [u8]) -> Result<(), Error<Storage>> {
+    fn read_exact_raw(&mut self, buf: &mut [u8]) -> Result<(), Error<Storage::Error>> {
         self.stream.read_exact(buf).map_err(Error::Storage)
     }
 
@@ -437,7 +440,7 @@ impl<Storage: Stream> Decoder<Storage> {
         &mut self,
         context: &mut ContextStack,
         buf: &mut [u8],
-    ) -> Result<(), Error<Storage>> {
+    ) -> Result<(), Error<Storage::Error>> {
         self.with_context(context, ContextId::ReadingBytes, |decoder, _| {
             decoder.read_exact_raw(buf)
         })
@@ -447,7 +450,7 @@ impl<Storage: Stream> Decoder<Storage> {
         &mut self,
         context: &mut ContextStack,
         count: usize,
-    ) -> Result<(), Error<Storage>> {
+    ) -> Result<(), Error<Storage::Error>> {
         self.with_context(context, ContextId::SkippingBytes, |decoder, _| {
             decoder.stream.skip_bytes(count).map_err(Error::Storage)
         })
@@ -458,7 +461,7 @@ impl<Storage: Stream> Decoder<Storage> {
         context: &mut ContextStack,
         count: usize,
         alloc: &A,
-    ) -> Result<Box<[u8], A>, Error<Storage>> {
+    ) -> Result<Box<[u8], A>, Error<Storage::Error>> {
         let mut buf = Vec::new_in(alloc.clone());
         buf.try_reserve_exact(count)?;
 
@@ -474,7 +477,7 @@ impl<Storage: Stream> Decoder<Storage> {
         &mut self,
         context: &mut ContextStack,
         alloc: &A,
-    ) -> Result<T, Error<Storage>> {
+    ) -> Result<T, Error<Storage::Error>> {
         self.with_context(context, T::ID, |decoder, context| {
             T::decode(decoder, context, alloc)
         })
@@ -483,7 +486,7 @@ impl<Storage: Stream> Decoder<Storage> {
     fn read_bounded<T: BoundedDecodable + Contextual>(
         &mut self,
         context: &mut ContextStack,
-    ) -> Result<T, Error<Storage>> {
+    ) -> Result<T, Error<Storage::Error>> {
         self.with_context(context, T::ID, |decoder, context| {
             T::decode(decoder, context)
         })
@@ -500,7 +503,7 @@ where
         decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
         alloc: &A,
-    ) -> Result<Self, Error<Storage>>;
+    ) -> Result<Self, Error<Storage::Error>>;
 }
 
 // Types that can be decoded from a storage stream without allocation.
@@ -508,7 +511,7 @@ trait BoundedDecodable: Sized + Copy {
     fn decode<Storage: Stream>(
         decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
-    ) -> Result<Self, Error<Storage>>;
+    ) -> Result<Self, Error<Storage::Error>>;
 }
 
 impl<Bounded: BoundedDecodable, A: Allocator> Decodable<A> for Bounded {
@@ -516,7 +519,7 @@ impl<Bounded: BoundedDecodable, A: Allocator> Decodable<A> for Bounded {
         decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
         _: &A,
-    ) -> Result<Self, Error<Storage>> {
+    ) -> Result<Self, Error<Storage::Error>> {
         <Self as BoundedDecodable>::decode(decoder, context)
     }
 }
@@ -553,7 +556,7 @@ pub(crate) fn decode_module<Storage, CustomSecVisitor, A>(
     context: &mut ContextStack,
     customsec_visitor: &mut CustomSecVisitor,
     alloc: A,
-) -> Result<Module<A>, Error<Storage>>
+) -> Result<Module<A>, Error<Storage::Error>>
 where
     Storage: Stream,
     CustomSecVisitor: CustomSectionVisitor<A>,

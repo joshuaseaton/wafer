@@ -80,7 +80,7 @@ trait Transcodable<A: Allocator>: Decodable<A> + Contextual {
         decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
         builder: &mut ExpressionBuilder<A>,
-    ) -> Result<(), Error<Storage>>;
+    ) -> Result<(), Error<Storage::Error>>;
 }
 
 impl<T, A> Transcodable<A> for T
@@ -116,7 +116,7 @@ where
         decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
         builder: &mut ExpressionBuilder<A>,
-    ) -> Result<(), Error<Storage>> {
+    ) -> Result<(), Error<Storage::Error>> {
         let value: Self = decoder.read_bounded(context)?;
         Ok(value.write_to(builder)?)
     }
@@ -140,7 +140,7 @@ where
         decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
         builder: &mut ExpressionBuilder<A>,
-    ) -> Result<(), Error<Storage>> {
+    ) -> Result<(), Error<Storage::Error>> {
         let len: u32 = decoder.read_bounded(context)?;
         builder.write(len)?;
         for _ in 0..len {
@@ -161,7 +161,7 @@ impl<A: Allocator> Transcodable<A> for BrTableOperands<A> {
         decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
         builder: &mut ExpressionBuilder<A>,
-    ) -> Result<(), Error<Storage>> {
+    ) -> Result<(), Error<Storage::Error>> {
         Vec::<LabelIdx, A>::transcode(decoder, context, builder)?;
         let default: LabelIdx = decoder.read_bounded(context)?;
         builder.write(default)?;
@@ -178,7 +178,7 @@ impl<A: Allocator> Transcodable<A> for SelectTOperands<A> {
         decoder: &mut Decoder<Storage>,
         context: &mut ContextStack,
         builder: &mut ExpressionBuilder<A>,
-    ) -> Result<(), Error<Storage>> {
+    ) -> Result<(), Error<Storage::Error>> {
         Vec::<ValType, A>::transcode(decoder, context, builder)
     }
 }
@@ -214,7 +214,7 @@ pub(super) fn transcode_expression<A: Allocator, Storage: Stream>(
     decoder: &mut Decoder<Storage>,
     context: &mut ContextStack,
     alloc: &A,
-) -> Result<Expression<A>, Error<Storage>> {
+) -> Result<Expression<A>, Error<Storage::Error>> {
     let mut builder = ExpressionBuilder::new(alloc.clone());
     macro_rules! transcode {
         ($operand_type:ty) => {
@@ -295,7 +295,7 @@ fn transcode_bulk_op<A: Allocator, Storage: Stream>(
     decoder: &mut Decoder<Storage>,
     context: &mut ContextStack,
     builder: &mut ExpressionBuilder<A>,
-) -> Result<(), Error<Storage>> {
+) -> Result<(), Error<Storage::Error>> {
     let bulk_op: BulkOpcode = decoder.read_bounded(context)?;
     builder.write(bulk_op)?;
 
@@ -332,6 +332,6 @@ fn transcode_vector_op<A: Allocator, Storage: Stream>(
     _decoder: &mut Decoder<Storage>,
     _context: &mut ContextStack,
     _builder: &mut ExpressionBuilder<A>,
-) -> Result<(), Error<Storage>> {
+) -> Result<(), Error<Storage::Error>> {
     todo!("vector instructions");
 }

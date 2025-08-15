@@ -71,7 +71,7 @@ impl<A: Allocator> Module<A> {
         storage: Storage,
         customsec_visitor: &mut CustomSecVisitor,
         alloc: A,
-    ) -> Result<Self, decode::ErrorWithContext<Storage>> {
+    ) -> Result<Self, decode::ErrorWithContext<Storage::Error>> {
         let mut context = ContextStack::default();
         let mut module = decode_module(storage, &mut context, customsec_visitor, alloc)
             .map_err(|error| decode::ErrorWithContext { error, context })?;
