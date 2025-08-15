@@ -7,8 +7,6 @@
 mod expr;
 mod validate_impls;
 
-use core::fmt;
-
 use crate::types::{FuncIdx, FunctionType, ImportDescriptor, Limits, SectionId, TypeIdx};
 use crate::{Allocator, Module};
 
@@ -56,7 +54,7 @@ pub(crate) fn prepare_module_for_validation<A: Allocator>(module: &mut Module<A>
         .sort_by(|a, b| a.field.as_ref().cmp(b.field.as_ref()));
 }
 
-pub(crate) struct Validator<'module, A: Allocator + fmt::Debug> {
+pub(crate) struct Validator<'module, A: Allocator> {
     module: &'module Module<A>,
 
     // The exclusive ending index within the import section of the functions, or
@@ -72,7 +70,7 @@ pub(crate) struct Validator<'module, A: Allocator + fmt::Debug> {
     import_memidx_end: usize,
 }
 
-impl<'module, A: Allocator + fmt::Debug> Validator<'module, A> {
+impl<'module, A: Allocator> Validator<'module, A> {
     fn new(module: &'module Module<A>) -> Self {
         // Recall that the import section was stably sorted by type in
         // prepare_module_for_validation().
