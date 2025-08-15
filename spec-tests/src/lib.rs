@@ -4,65 +4,20 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT
 
-use std::fs::File;
-use std::io;
+use std::fs;
 
 use spec_test_macro::wasm_spec_tests;
 use wafer::Module;
 use wafer::core_compat::alloc;
 use wafer::decode::{self, NoCustomSectionVisitor};
-use wafer::storage::Stream;
+use wafer::storage::MemoryEof;
 use wafer::validate;
-
-#[derive(Debug)]
-struct BufReader<R>(io::BufReader<R>);
-
-impl<R> PartialEq for BufReader<R> {
-    fn eq(&self, _other: &Self) -> bool {
-        // We don't need to actually compare BufReaders in tests
-        true
-    }
-}
-
-impl<R: io::Read> BufReader<R> {
-    fn new(inner: R) -> Self {
-        Self(io::BufReader::new(inner))
-    }
-}
-
-impl<R: io::Read + io::Seek> Stream for BufReader<R> {
-    type Error = io::ErrorKind;
-
-    fn offset(&mut self) -> usize {
-        self.0.offset()
-    }
-
-    fn read_byte(&mut self) -> Result<u8, Self::Error> {
-        self.0.read_byte().map_err(|e| e.kind())
-    }
-
-    fn read_exact(&mut self, buf: &mut [u8]) -> Result<(), Self::Error> {
-        self.0.read_exact(buf).map_err(|e| e.kind())
-    }
-
-    fn skip_bytes(&mut self, count: usize) -> Result<(), Self::Error> {
-        self.0.skip_bytes(count).map_err(|e| e.kind())
-    }
-
-    fn is_eof(err: &Self::Error) -> bool {
-        matches!(err, io::ErrorKind::UnexpectedEof)
-    }
-}
 
 #[allow(unused)]
 fn check_module(wasm: &str) {
-    let f = File::open(wasm).unwrap();
-    let module = Module::decode(
-        io::BufReader::new(f),
-        &mut NoCustomSectionVisitor {},
-        alloc::Global,
-    )
-    .unwrap();
+    let bytes = fs::read(wasm).unwrap();
+    let module =
+        Module::decode_bytes(bytes, &mut NoCustomSectionVisitor {}, alloc::Global).unwrap();
 
     module.validate().unwrap();
 }
@@ -71,12 +26,8 @@ fn check_module(wasm: &str) {
 fn assert_malformed(wasm: &str, expected: &wast2json::Error) {
     use wast2json::Error::*;
 
-    let f = File::open(wasm).unwrap();
-    let result = Module::decode(
-        BufReader::new(f),
-        &mut NoCustomSectionVisitor {},
-        alloc::Global,
-    );
+    let bytes = fs::read(wasm).unwrap();
+    let result = Module::decode_bytes(bytes, &mut NoCustomSectionVisitor {}, alloc::Global);
 
     if let Err(error) = &result {
         let error = &error.error;
@@ -96,7 +47,7 @@ fn assert_malformed(wasm: &str, expected: &wast2json::Error) {
         // Very much best-effort.
         match expected {
             EndOpcodeExpected => error_matches!(
-                decode::Error::Storage(io::ErrorKind::UnexpectedEof)
+                decode::Error::Storage(MemoryEof {})
                     | decode::Error::InvalidFunctionLength {
                         expected: _,
                         actual: _
@@ -112,7 +63,7 @@ fn assert_malformed(wasm: &str, expected: &wast2json::Error) {
                 error_matches!(decode::Error::InvalidLeb128 | decode::Error::InvalidToken(_));
             }
             LengthOutOfBounds => {
-                error_matches!(decode::Error::Storage(io::ErrorKind::UnexpectedEof));
+                error_matches!(decode::Error::Storage(MemoryEof {}));
             }
             MagicHeaderNotDetected => error_matches!(decode::Error::InvalidMagic(_)),
             MalformedUtf8Encoding => error_is!(decode::Error::InvalidUtf8),
@@ -136,7 +87,7 @@ fn assert_malformed(wasm: &str, expected: &wast2json::Error) {
                 });
             }
             UnexpectedEnd | UnexpectedEndOfSectionOrFunction => {
-                error_is!(decode::Error::Storage(io::ErrorKind::UnexpectedEof));
+                error_is!(decode::Error::Storage(MemoryEof {}));
             }
             UnknownBinaryVersion => error_matches!(decode::Error::UnknownVersion(_)),
             _ => todo!(

@@ -54,7 +54,7 @@ pub trait Stream {
 }
 
 /// Represents attempting to read past the end of a buffer.
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct MemoryEof {}
 
 /// In-memory buffer implementation of [`Stream`].
