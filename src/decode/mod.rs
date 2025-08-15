@@ -547,8 +547,8 @@ impl<A: Allocator> CustomSectionVisitor<A> for NoCustomSectionVisitor {
 // Parse a WebAssembly module from a storage stream.
 //
 // # Arguments
-// * `context` - Context stack for error reporting
 // * `storage` - Data stream containing WASM binary
+// * `context` - Context stack for error reporting
 // * `customsec_visitor` - Handler for custom sections
 // * `alloc` - Allocator for decoded data
 pub(crate) fn decode_module<Storage, CustomSecVisitor, A>(
