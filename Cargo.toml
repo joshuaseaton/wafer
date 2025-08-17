@@ -53,6 +53,7 @@ undocumented_unsafe_blocks = "deny"
 # More noise than signal, more heat than light.
 cast_possible_truncation = "allow"
 enum_glob_use = "allow"
+explicit_deref_methods = "allow"
 missing_errors_doc = "allow"
 must_use_candidate = "allow"
 too_many_lines = "allow"

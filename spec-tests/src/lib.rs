@@ -16,7 +16,7 @@ use wafer::validate;
 #[allow(unused)]
 fn check_module(wasm: &str) {
     let bytes = fs::read(wasm).unwrap();
-    let module =
+    let mut module =
         Module::decode_bytes(bytes, &mut NoCustomSectionVisitor {}, alloc::Global).unwrap();
 
     module.validate().unwrap();
@@ -100,7 +100,7 @@ fn assert_malformed(wasm: &str, expected: &wast2json::Error) {
 
     // If there's any remaining malformedness, it should be caught during
     // validation.
-    let module = result.unwrap();
+    let mut module = result.unwrap();
     let result = module.validate();
     let Err(error) = result else {
         panic!("Success!? Expected decoding or validation error: {expected:?}")

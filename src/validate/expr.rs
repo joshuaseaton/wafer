@@ -7,21 +7,24 @@
 use crate::Allocator;
 use crate::types::{Expression, FunctionType, ValType};
 
-use super::{Error, Validator};
+use super::{Error, ValidationContext};
 
-#[allow(unused)]
-#[derive(Copy, Clone, Debug)]
-pub(crate) enum ExpressionValidationContext<'module, A: Allocator> {
-    Function(&'module FunctionType<A>),
-    Constant(ValType),
+// TODO: Implement me.
+#[allow(clippy::unnecessary_wraps, unused)]
+pub(crate) fn validate_function<A: Allocator>(
+    context: &mut ValidationContext,
+    expr: &mut Expression<A>,
+    typ: &FunctionType<A>,
+) -> Result<(), Error> {
+    Ok(())
 }
 
-#[allow(clippy::needless_pass_by_value, clippy::unnecessary_wraps, unused)]
-pub(crate) fn validate_expression<A: Allocator>(
-    validator: &mut Validator<A>,
+// TODO: Implement me.
+#[allow(clippy::unnecessary_wraps, unused)]
+pub(crate) fn validate_constant_expression<A: Allocator>(
+    context: &mut ValidationContext,
     expr: &Expression<A>,
-    context: ExpressionValidationContext<A>,
+    typ: ValType,
 ) -> Result<(), Error> {
-    // TODO: implement me.
     Ok(())
 }

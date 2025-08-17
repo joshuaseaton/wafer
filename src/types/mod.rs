@@ -13,7 +13,7 @@
 mod instr;
 pub use instr::*;
 
-use core::cmp;
+use core::{cmp, ops};
 
 use num_enum::TryFromPrimitive;
 
@@ -548,6 +548,13 @@ newtype!(
     pub struct CodeSection<A: Allocator>(Vec<Function<A>, A>);
 );
 
+// Function bodies are patched during validation.
+impl<A: Allocator> ops::DerefMut for CodeSection<A> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
 /// A data segment for initializing linear memory.
 #[derive(Debug)]
 pub struct DataSegment<A: Allocator> {
@@ -579,4 +586,10 @@ newtype!(
     /// Section containing data segments for memory initialization.
     #[derive(Debug)]
     pub struct DataSection<A: Allocator>(Vec<DataSegment<A>, A>);
+);
+
+newtype!(
+    /// Holds an optionally-provided size of the data section.
+    #[derive(Clone, Copy, Debug)]
+    pub struct DataCountSection(u32);
 );

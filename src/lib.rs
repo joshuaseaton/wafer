@@ -26,7 +26,7 @@ use types::{
     CodeSection, DataSection, ElementSection, ExportSection, FunctionSection, GlobalSection,
     ImportSection, MemorySection, StartSection, TableSection, TypeSection, Version,
 };
-use validate::{prepare_module_for_validation, validate_module};
+use validate::validate_module;
 
 /// A convenience trait that captures the commonly required allocation-related
 /// trait bounds.
@@ -73,12 +73,8 @@ impl<A: Allocator> Module<A> {
         alloc: A,
     ) -> Result<Self, decode::ErrorWithContext<Storage::Error>> {
         let mut context = ContextStack::default();
-        let mut module = decode_module(storage, &mut context, customsec_visitor, alloc)
-            .map_err(|error| decode::ErrorWithContext { error, context })?;
-        // Prepare now so the validation phase can take it for granted that
-        // certain internal invariants hold for any constructed Module.
-        prepare_module_for_validation(&mut module);
-        Ok(module)
+        decode_module(storage, &mut context, customsec_visitor, alloc)
+            .map_err(|error| decode::ErrorWithContext { error, context })
     }
 
     /// Decodes a module directly from memory.
@@ -91,7 +87,11 @@ impl<A: Allocator> Module<A> {
     }
 
     /// Validates the module.
-    pub fn validate(&self) -> Result<(), validate::Error> {
+    ///
+    /// This method takes a mutable reference as it finalizes wafer's
+    /// intermediate representation of the bytecode and sorts some sections for
+    /// easier validation.
+    pub fn validate(&mut self) -> Result<(), validate::Error> {
         validate_module(self)
     }
 }
