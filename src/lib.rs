@@ -18,7 +18,7 @@ pub mod storage;
 pub mod types;
 pub mod validate;
 
-use core::fmt;
+use core::{fmt, ops};
 
 use decode::{ContextStack, CustomSectionVisitor, decode_module};
 use storage::{MemoryEof, Stream};
@@ -35,6 +35,7 @@ pub trait Allocator: core_compat::alloc::Allocator + fmt::Debug + Clone {}
 impl<A> Allocator for A where A: core_compat::alloc::Allocator + fmt::Debug + Clone {}
 
 /// A WebAssembly module.
+#[derive(Debug)]
 pub struct Module<A: Allocator> {
     /// Module version.
     pub version: Version,
@@ -87,11 +88,19 @@ impl<A: Allocator> Module<A> {
     }
 
     /// Validates the module.
-    ///
-    /// This method takes a mutable reference as it finalizes wafer's
-    /// intermediate representation of the bytecode and sorts some sections for
-    /// easier validation.
-    pub fn validate(&mut self) -> Result<(), validate::Error> {
+    pub fn validate(self) -> Result<ValidatedModule<A>, validate::Error> {
         validate_module(self)
+    }
+}
+
+/// A validated module.
+#[derive(Debug)]
+pub struct ValidatedModule<A: Allocator>(Module<A>);
+
+impl<A: Allocator> ops::Deref for ValidatedModule<A> {
+    type Target = Module<A>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }

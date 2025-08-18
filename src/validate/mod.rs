@@ -11,7 +11,7 @@ use crate::types::{
     DataIdx, ElemIdx, FuncIdx, FunctionType, GlobalIdx, ImportDescriptor, Limits, MemIdx,
     SectionId, TableIdx, TypeIdx,
 };
-use crate::{Allocator, Module};
+use crate::{Allocator, Module, ValidatedModule};
 
 use expr::{validate_constant_expression, validate_function};
 
@@ -221,7 +221,9 @@ trait Validate {
     fn validate(&self, context: &mut ValidationContext) -> Result<(), Error>;
 }
 
-pub(super) fn validate_module<A: Allocator>(module: &mut Module<A>) -> Result<(), Error> {
+pub(super) fn validate_module<A: Allocator>(
+    mut module: Module<A>,
+) -> Result<ValidatedModule<A>, Error> {
     // Stably sort by type, since logical grouping makes for O(1) determination
     // of the number of imports by type, and for easier separaton later on. It
     // is important that we sort stably since the ordering within a group is
@@ -241,7 +243,7 @@ pub(super) fn validate_module<A: Allocator>(module: &mut Module<A>) -> Result<()
     // Structural validation of the module.
     //
     // Note that the type section is always valid.
-    let mut context = ValidationContext::new(module);
+    let mut context = ValidationContext::new(&module);
     module.importsec.validate(&mut context)?;
     module.funcsec.validate(&mut context)?;
     module.tablesec.validate(&mut context)?;
@@ -286,5 +288,6 @@ pub(super) fn validate_module<A: Allocator>(module: &mut Module<A>) -> Result<()
         let func_type = &module.typesec[*typeidx as usize];
         validate_function(&mut context, &mut function.code, func_type)?;
     }
-    Ok(())
+
+    Ok(ValidatedModule(module))
 }
